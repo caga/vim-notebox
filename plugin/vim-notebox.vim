@@ -240,6 +240,10 @@ if !hasmapto('<Plug>Opennotebox;')
  	map <unique> <Leader>ob <Plug>OpenBox;
 endif
 
+if !hasmapto('<Plug>Openlastnote;')
+ 	map <unique> <Leader>ln <Plug>OpenLastNote;
+endif
+
 noremap <unique> <script> <Plug>Newnote; <SID>Newnote
 noremap <SID>Newnote :call <SID>NewNote()<CR>
 
@@ -249,3 +253,5 @@ noremap <SID>YankNoteLink :call <SID>YankNoteLink(expand("%"))<CR>
 noremap <unique> <script> <Plug>OpenBox; <SID>OpenBox
 noremap <SID>OpenBox :call <SID>OpenNoteBox()<CR>
 
+noremap <unique> <script> <Plug>OpenLastNote; <SID>OpenLastNote
+noremap <SID>OpenLastNote :call <SID>OpenLastNote()<CR>
