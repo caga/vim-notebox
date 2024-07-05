@@ -52,7 +52,7 @@ def NoteFilename(id: number): string
 	return file
 enddef
 
-def g:OpenNoteById(id: number)
+def OpenNoteById(id: number)
 	var file = NoteFilename(id)
 		execute $"edit {file}"
 enddef
@@ -64,7 +64,6 @@ def LastNote(): string
 	if checkvar == "ls: cannot access"
 		throw $"No Readabe File for Last Note {lnote}"
 	endif
-	echom $"Last note: {lnote}"
 	return lnote
 enddef
 
@@ -87,44 +86,44 @@ enddef
 # 	throw "GetCurrentNoteId: There is no 'id' section found in the file"
 # enddef
 
-def YankCurrentNoteId()
-	var id = GetCurrentNoteId()
-	@0 = id
-enddef
+# def YankCurrentNoteId()
+# 	var id = GetCurrentNoteId()
+# 	@0 = id
+# enddef
 
-def GetCurrentNoteFilename(): string
-	var id = GetCurrentNoteId()
-	var file = id .. ".md"
-	return file
-enddef
+# def GetCurrentNoteFilename(): string
+# 	var id = GetCurrentNoteId()
+# 	var file = id .. ".md"
+# 	return file
+# enddef
 
-def YankCurrentNoteFilename(): string
-	filename = GetCurrentNoteFilename()
-	@0 = file
-enddef
+# def YankCurrentNoteFilename(): string
+# 	filename = GetCurrentNoteFilename()
+# 	@0 = file
+# enddef
 
 
-def GetCurrentNoteExplanation(): string
-	var save_yank = @0
-	var save_cursor = getcurpos()
-	search("n_explanation:")
-	execute "normal 0f:w"
-	var a = getcurpos()[2]
-	if a <= 15
-		echo "explanation needed"
-		return "explanation needed "
-	endif
-	execute "normal! y$"
-	var exp = @0
-	@0 = save_yank
-	setpos('.', save_cursor)
-	return exp
-enddef
+# def GetCurrentNoteExplanation(): string
+# 	var save_yank = @0
+# 	var save_cursor = getcurpos()
+# 	search("n_explanation:")
+# 	execute "normal 0f:w"
+# 	var a = getcurpos()[2]
+# 	if a <= 15
+# 		echo "explanation needed"
+# 		return "explanation needed "
+# 	endif
+# 	execute "normal! y$"
+# 	var exp = @0
+# 	@0 = save_yank
+# 	setpos('.', save_cursor)
+# 	return exp
+# enddef
 
-def YankCurrentNoteExplanation(): string
-	var exp = GetCurrentNoteExplanation()
-	@0 = exp
-enddef
+# def YankCurrentNoteExplanation(): string
+# 	var exp = GetCurrentNoteExplanation()
+# 	@0 = exp
+# enddef
 # def GetCurrentNoteMarkdownLink(): string
 # 	var filename = GetCurrentNoteFilename()
 # 	var explanation = GetCurrentNoteExplanation()
@@ -184,7 +183,7 @@ def CreateNoteLink(file: string): string
 	return link
 enddef
 
-def YankNoteLink(file: string): string
+def YankNoteLink(file: string)
 	var link = CreateNoteLink(file)
 	@0 = link
 enddef
@@ -219,22 +218,34 @@ def WriteBackReferences()
 	endfor
 enddef
 
+def OpenNoteBox()
+	execute $"Ve {g:notes_directory}"
+enddef
+
 command -nargs=* Newnote :call NewNote(<q-args>)
 command -nargs=0 Writeback :call WriteBackReferences()
 command -nargs=1 Getnoteid :call GetNoteId(expand(<q-args>))
 command -nargs=0 Openlastnote :call OpenLastNote()
+command -nargs=0 Openbox :call OpenNoteBox()
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
 endif
 
 if !hasmapto('<Plug>Yanknotelink;')
-	map <unique> <Leader>nl <Plug>YankCurrentNoteMarkdownLink;
+	map <unique> <Leader>nl <Plug>YankNoteLink;
 endif
 
+if !hasmapto('<Plug>Opennotebox;')
+ 	map <unique> <Leader>ob <Plug>OpenBox;
+endif
 
 noremap <unique> <script> <Plug>Newnote; <SID>Newnote
 noremap <SID>Newnote :call <SID>NewNote()<CR>
 
-noremap <unique> <script> <Plug>YankCurrentNoteMarkdownLink; <SID>YankCurrentNoteMarkdownLink
-noremap <SID>YankCurrentNoteMarkdownLink :call <SID>YankCurrentNoteMarkdownLink()<CR>
+noremap <unique> <script> <Plug>YankNoteLink; <SID>YankNoteLink
+noremap <SID>YankNoteLink :call <SID>YankNoteLink(expand("%"))<CR>
+
+noremap <unique> <script> <Plug>OpenBox; <SID>OpenBox
+noremap <SID>OpenBox :call <SID>OpenNoteBox()<CR>
+
