@@ -73,19 +73,19 @@ def OpenLastNote()
 	execute $"edit {file}"
 enddef
 
-def GetCurrentNoteId(): number
-	var save_yank = @0
-	var save_cursor = getcurpos()
-	execute "normal! gg"
-	if search("id:") != 0
-		execute "normal 0f:wyw"
-		var id = str2nr(@0)
-		@0 = save_yank
-		setpos('.', save_cursor)
-		return id
-	endif
-	throw "GetCurrentNoteId: There is no 'id' section found in the file"
-enddef
+# def GetCurrentNoteId(): number
+# 	var save_yank = @0
+# 	var save_cursor = getcurpos()
+# 	execute "normal! gg"
+# 	if search("id:") != 0
+# 		execute "normal 0f:wyw"
+# 		var id = str2nr(@0)
+# 		@0 = save_yank
+# 		setpos('.', save_cursor)
+# 		return id
+# 	endif
+# 	throw "GetCurrentNoteId: There is no 'id' section found in the file"
+# enddef
 
 def YankCurrentNoteId()
 	var id = GetCurrentNoteId()
@@ -125,18 +125,18 @@ def YankCurrentNoteExplanation(): string
 	var exp = GetCurrentNoteExplanation()
 	@0 = exp
 enddef
-def GetCurrentNoteMarkdownLink(): string
-	var filename = GetCurrentNoteFilename()
-	var explanation = GetCurrentNoteExplanation()
-	var link = "[[" .. explanation .. "]" .. "(" .. filename .. ")]"
-	return link
-enddef
+# def GetCurrentNoteMarkdownLink(): string
+# 	var filename = GetCurrentNoteFilename()
+# 	var explanation = GetCurrentNoteExplanation()
+# 	var link = "[[" .. explanation .. "]" .. "(" .. filename .. ")]"
+# 	return link
+# enddef
 
-def YankCurrentNoteMarkdownLink()
-	var link = GetCurrentNoteMarkdownLink()
-	@0 = link
-	echom "Link Copied"
-enddef
+# def YankCurrentNoteMarkdownLink()
+# 	var link = GetCurrentNoteMarkdownLink()
+# 	@0 = link
+# 	echom "Link Copied"
+# enddef
 
 # def GetNoteId(file: string = " "): number
 # 	try
@@ -173,6 +173,22 @@ def GetNoteId(file: string): number
 	return id
 enddef
 
+def GetNoteExplanation(file: string): string
+	var soup = readfile(file)
+	var exp = join(split(soup[4])[1 : ])
+	return exp
+enddef
+
+def CreateNoteLink(file: string): string
+	var link = $"[{GetNoteExplanation(file)}]({file})"
+	return link
+enddef
+
+def YankNoteLink(file: string): string
+	var link = CreateNoteLink(file)
+	@0 = link
+enddef
+	
 def BackReferences(id: number): list<string>
 	var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
 	var referees = []
@@ -181,24 +197,26 @@ def BackReferences(id: number): list<string>
 			add(referees, file)
 		endif
 	endfor
-	return referees
-enddef
-
-def CurrentNoteBackReferences(): list<string>
-	var id = GetCurrentNoteId()
-	var backrefs = BackReferences(id)
-	return backrefs
+	return sort(referees)
 enddef
 
 def WriteBackReferences()
-	var currentfile = expand("%:p")
-	var backrefs = CurrentNoteBackReferences()
+	var file = expand("%:p")
+	var id = GetNoteId(file)
+	var backrefs = BackReferences(id)
 	cursor(line('$'), 100)
-	if search('#BackReferences', 'b') < 0
+	var backrefHeaderLine = search('#BackReferences', 'b')
+	if backrefHeaderLine < 0
 		execute "normal! Go#BackReferences "
-	else
+		backrefHeaderLine = getcurpos()[1]
 	endif
-	writefile(backrefs, currentfile, 'a')
+	setpos('.', [0, backrefHeaderLine, 0])
+	execute "normal! dGo#BackReferences:\<esc>o"
+	var i = 0
+	for ref in backrefs
+		i = i + 1
+		execute $"normal! o{i}-{CreateNoteLink(ref)}"
+	endfor
 enddef
 
 command -nargs=* Newnote :call NewNote(<q-args>)
@@ -220,5 +238,3 @@ noremap <SID>Newnote :call <SID>NewNote()<CR>
 
 noremap <unique> <script> <Plug>YankCurrentNoteMarkdownLink; <SID>YankCurrentNoteMarkdownLink
 noremap <SID>YankCurrentNoteMarkdownLink :call <SID>YankCurrentNoteMarkdownLink()<CR>
-
-#BackReferences: 
