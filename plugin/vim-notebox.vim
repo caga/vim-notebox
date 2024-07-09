@@ -344,6 +344,10 @@ if !hasmapto('<Plug>Notesearch;')
  	map <unique> <Leader>ns <Plug>Notesearch;
 endif
 
+if !hasmapto('<Plug>Whichbox;')
+ 	map <unique> <Leader>wb <Plug>Whichbox;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -364,3 +368,6 @@ noremap <SID>Searchword :call <SID>WordSearch(expand("<cword>"))<CR>
 
 noremap <unique> <script> <Plug>Notesearch; <SID>Notesearch
 noremap <SID>Notesearch :Notesearch 
+
+noremap <unique> <script> <Plug>Whichbox; <SID>Whichbox
+noremap <SID>Whichbox :call <SID>WhichBox()<CR>
