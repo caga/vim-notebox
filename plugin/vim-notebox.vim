@@ -274,7 +274,10 @@ def NoteSearch(keywords: string): string
 	endif
 
 	if len(Keywords) == 1 
-		return SingleTermSearchInBox(Keywords[0])
+		var files = SingleTermSearchInBox(Keywords[0])
+		cgetexpr split(files)
+		copen
+		return files
 	endif
 
 	var files = ""
@@ -300,6 +303,10 @@ def NoteSearch(keywords: string): string
 		return files
 enddef
 
+def WordSearch(keyword: string)
+		NoteSearch(keyword)
+enddef
+
 command -nargs=* Newnote :call NewNote(<q-args>)
 command -nargs=0 Writeback :call WriteBackReferences()
 command -nargs=1 Getnoteid :call GetNoteId(expand(<q-args>))
@@ -314,19 +321,23 @@ if !hasmapto('<Plug>Newnote;')
 endif
 
 if !hasmapto('<Plug>Yanknotelink;')
-	map <unique> <Leader>nl <Plug>YankNoteLink;
+	map <unique> <Leader>nl <Plug>Yanknotelink;
 endif
 
 if !hasmapto('<Plug>Opennotebox;')
- 	map <unique> <Leader>ob <Plug>OpenBox;
+ 	map <unique> <Leader>ob <Plug>Openbox;
 endif
 
 if !hasmapto('<Plug>Openlastnote;')
- 	map <unique> <Leader>ln <Plug>OpenLastNote;
+ 	map <unique> <Leader>ln <Plug>Openlastnote;
 endif
 
 if !hasmapto('<Plug>Selectbox;')
  	map <unique> <Leader>sb <Plug>Selectbox;
+endif
+
+if !hasmapto('<Plug>Searchword;')
+ 	map <unique> <Leader>s <Plug>Searchword;
 endif
 
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
@@ -335,11 +346,14 @@ noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 noremap <unique> <script> <Plug>Newnote; <SID>Newnote
 noremap <SID>Newnote :call <SID>NewNote()<CR>
 
-noremap <unique> <script> <Plug>YankNoteLink; <SID>YankNoteLink
-noremap <SID>YankNoteLink :call <SID>YankNoteLink(expand("%"))<CR>
+noremap <unique> <script> <Plug>Yanknotelink; <SID>Yanknotelink
+noremap <SID>Yanknotelink :call <SID>YankNoteLink(expand("%"))<CR>
 
-noremap <unique> <script> <Plug>OpenBox; <SID>OpenBox
-noremap <SID>OpenBox :call <SID>OpenNoteBox()<CR>
+noremap <unique> <script> <Plug>Openbox; <SID>Openbox
+noremap <SID>Openbox :call <SID>OpenNoteBox()<CR>
 
-noremap <unique> <script> <Plug>OpenLastNote; <SID>OpenLastNote
-noremap <SID>OpenLastNote :call <SID>OpenLastNote()<CR>
+noremap <unique> <script> <Plug>Openlastnote; <SID>Openlastnote
+noremap <SID>Openlastnote :call <SID>OpenLastNote()<CR>
+
+noremap <unique> <script> <Plug>Searchword; <SID>Searchword
+noremap <SID>Searchword :call <SID>WordSearch(expand("<cword>"))<CR>
