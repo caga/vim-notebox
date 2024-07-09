@@ -35,7 +35,10 @@ def ChooseBox(): string
 	return cbox
 enddef
 
-
+def WhichBox(): string
+	echo "\n" .. "Current Note Box: " .. g:notes_directory
+	return g:notes_directory
+enddef
 
 var plugindir = expand('<sfile>:p:h:h')
 
@@ -304,6 +307,7 @@ command -nargs=0 Openlastnote :call OpenLastNote()
 command -nargs=0 Openbox :call OpenNoteBox()
 command -nargs=0 Choosebox :call ChooseBox()
 command -nargs=* Notesearch :call NoteSearch(<q-args>)
+command -nargs=0 Whichbox :call WhichBox()
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
