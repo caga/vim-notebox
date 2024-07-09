@@ -261,7 +261,7 @@ def SingleTermSearchForFiles(keyword: string, files: string): string
 	return results
 enddef
 
-def g:NoteSearch(keywords: string): string
+def NoteSearch(keywords: string): string
 	set efm=%f
 	var Keywords =  split(keywords)
 
@@ -275,9 +275,7 @@ def g:NoteSearch(keywords: string): string
 	endif
 
 	var files = ""
-	var searchfiles = ""
 	var i = 0
-	var searchSentence = ""
 
 	for keyword in Keywords
 		if i == 0
@@ -288,17 +286,15 @@ def g:NoteSearch(keywords: string): string
 		files = SingleTermSearchForFiles(keyword, files)
 		i = i + 1
 	endfor
-	return files
-
-
-
-	#  	var results = system($"nsearch {arama}")
-	#  	if empty(results)
-	#  		echo "NoteSearch: There is no search result"
-	#  	else
-	#  	cgetexpr results
-	#  	copen
-	#  	endif
+# 	return files
+	  	if empty(files)
+	  		echo "NoteSearch: There is no search result"
+			cexpr []
+	  	else
+	  	cgetexpr split(files)
+	  	copen
+	  	endif
+		return files
 enddef
 
 command -nargs=* Newnote :call NewNote(<q-args>)
@@ -307,6 +303,7 @@ command -nargs=1 Getnoteid :call GetNoteId(expand(<q-args>))
 command -nargs=0 Openlastnote :call OpenLastNote()
 command -nargs=0 Openbox :call OpenNoteBox()
 command -nargs=0 Choosebox :call ChooseBox()
+command -nargs=* Notesearch :call NoteSearch(<q-args>)
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
