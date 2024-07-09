@@ -1,5 +1,7 @@
 vim9script
 
+var plugindir = expand('<sfile>:p:h:h')
+
 if !exists("g:notes_directory")
 	 g:notes_directory = "~/notes"
 endif
@@ -8,6 +10,9 @@ if !exists("g:notes_author")
 	 g:notes_author = " "
 endif
 
+if !exists("g:citation_style")
+	 g:citation_style = $"{plugindir}/ieee-with-url.csl"
+endif
 
 if !exists("g:boxes")
 	g:boxes = ["~/notes", "~/notes2"]
@@ -40,7 +45,6 @@ def WhichBox(): string
 	return g:notes_directory
 enddef
 
-var plugindir = expand('<sfile>:p:h:h')
 
 def EditNoteId(id: number)
 	search("id")
@@ -52,8 +56,8 @@ def EditAuthor(auth: string)
 	execute $"normal 0f:d$A: {auth}"
 enddef
 
-def EditExplanation(exp: string)
-	search("n_explanation")
+def EditTitle(exp: string)
+	search("title:")
 	execute $"normal 0f:d$A: {exp} "
 enddef
 
@@ -62,6 +66,11 @@ def EditDate(dat: string)
 	search("date")
 	execute $"normal 0f:d$A: {dat}"
 
+enddef
+
+def EditCitationStyle()
+	search("citation-style")
+	execute $"normal 0f:d$A: {g:citation_style}"
 enddef
 
 def NewNote(phrase: string = "" )
@@ -73,7 +82,8 @@ def NewNote(phrase: string = "" )
 	EditNoteId(id)
 	EditAuthor(g:notes_author)
 	EditDate(date)
-	EditExplanation(phrase)
+	EditCitationStyle()
+	EditTitle(phrase)
 enddef
 
 def NoteFilename(id: number): string
