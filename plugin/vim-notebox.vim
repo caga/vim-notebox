@@ -254,7 +254,7 @@ def OpenNoteBox()
 	execute $"e {g:notes_directory}"
 enddef
 def SingleTermSearchInBox(keyword: string): string
- 		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*"), ' ')
+ 		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*.md"), ' ')
 		return results
 enddef
 
@@ -340,6 +340,10 @@ if !hasmapto('<Plug>Searchword;')
  	map <unique> <Leader>s <Plug>Searchword;
 endif
 
+if !hasmapto('<Plug>Notesearch;')
+ 	map <unique> <Leader>ns <Plug>Notesearch;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -357,3 +361,6 @@ noremap <SID>Openlastnote :call <SID>OpenLastNote()<CR>
 
 noremap <unique> <script> <Plug>Searchword; <SID>Searchword
 noremap <SID>Searchword :call <SID>WordSearch(expand("<cword>"))<CR>
+
+noremap <unique> <script> <Plug>Notesearch; <SID>Notesearch
+noremap <SID>Notesearch :Notesearch 
