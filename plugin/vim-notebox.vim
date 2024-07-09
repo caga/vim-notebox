@@ -8,6 +8,35 @@ if !exists("g:notes_author")
 	 g:notes_author = " "
 endif
 
+
+if !exists("g:boxes")
+	g:boxes = ["~/notes", "~/notes2"]
+endif
+
+def ListBoxes()
+	var i = 1
+	for box in g:boxes
+		echo $"{i} - {g:boxes[i - 1]}"
+		i = i + 1
+	endfor
+enddef
+def ChooseBox(): string
+	ListBoxes()
+	var box = input($"Please choose box:")
+	if box == ""
+		var cbox = g:boxes[0]
+		g:notes_directory = cbox
+		echo "\n" .. "Current Note Box: " .. g:notes_directory
+		return cbox
+	endif
+	var cbox = g:boxes[str2nr(box) - 1]
+	g:notes_directory = cbox
+	echo "\n" .. "Current Note Box: " .. g:notes_directory
+	return cbox
+enddef
+
+
+
 var plugindir = expand('<sfile>:p:h:h')
 
 def EditNoteId(id: number)
@@ -219,7 +248,57 @@ def WriteBackReferences()
 enddef
 
 def OpenNoteBox()
-	execute $"Ve {g:notes_directory}"
+	execute $"e {g:notes_directory}"
+enddef
+def SingleTermSearchInBox(keyword: string): string
+ 		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*"), ' ')
+		return results
+enddef
+
+def SingleTermSearchForFiles(keyword: string, files: string): string
+	var searchSentence = $"grep -lid recurse {keyword} {files}"
+	var results = join(systemlist(searchSentence), ' ')
+	return results
+enddef
+
+def g:NoteSearch(keywords: string): string
+	set efm=%f
+	var Keywords =  split(keywords)
+
+	if len(Keywords) == 0
+		echom "No keyword is given"
+		return "No keyword"
+	endif
+
+	if len(Keywords) == 1 
+		return SingleTermSearchInBox(Keywords[0])
+	endif
+
+	var files = ""
+	var searchfiles = ""
+	var i = 0
+	var searchSentence = ""
+
+	for keyword in Keywords
+		if i == 0
+			files = SingleTermSearchInBox(keyword)
+			i = i + 1
+			continue
+		endif
+		files = SingleTermSearchForFiles(keyword, files)
+		i = i + 1
+	endfor
+	return files
+
+
+
+	#  	var results = system($"nsearch {arama}")
+	#  	if empty(results)
+	#  		echo "NoteSearch: There is no search result"
+	#  	else
+	#  	cgetexpr results
+	#  	copen
+	#  	endif
 enddef
 
 command -nargs=* Newnote :call NewNote(<q-args>)
@@ -227,6 +306,7 @@ command -nargs=0 Writeback :call WriteBackReferences()
 command -nargs=1 Getnoteid :call GetNoteId(expand(<q-args>))
 command -nargs=0 Openlastnote :call OpenLastNote()
 command -nargs=0 Openbox :call OpenNoteBox()
+command -nargs=0 Choosebox :call ChooseBox()
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
@@ -243,6 +323,13 @@ endif
 if !hasmapto('<Plug>Openlastnote;')
  	map <unique> <Leader>ln <Plug>OpenLastNote;
 endif
+
+if !hasmapto('<Plug>Selectbox;')
+ 	map <unique> <Leader>sb <Plug>Selectbox;
+endif
+
+noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
+noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
 noremap <unique> <script> <Plug>Newnote; <SID>Newnote
 noremap <SID>Newnote :call <SID>NewNote()<CR>
