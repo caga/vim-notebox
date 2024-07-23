@@ -11,12 +11,17 @@ if !exists("g:notes_author")
 endif
 
 if !exists("g:citation_style")
-	 g:citation_style = $"{plugindir}/ieee-with-url.csl"
+	 g:citation_style = $"{plugindir}/plugin/ieee-with-url.csl"
 endif
 
 if !exists("g:boxes")
 	g:boxes = ["~/notes", "~/notes2"]
 endif
+
+if !exists("g:bibfile")
+	 g:bibfile = $"{plugindir}/plugin/notes.bib"
+endif
+
 
 def ListBoxes()
 	var i = 1
@@ -36,6 +41,7 @@ def ChooseBox(): string
 	endif
 	var cbox = g:boxes[str2nr(box) - 1]
 	g:notes_directory = cbox
+# 	execute $"cd {g:notes_directory}"
 	echo "\n" .. "Current Note Box: " .. g:notes_directory
 	return cbox
 enddef
@@ -63,14 +69,19 @@ enddef
 
 
 def EditDate(dat: string)
-	search("date")
+	search("date:")
 	execute $"normal 0f:d$A: {dat}"
 
 enddef
 
 def EditCitationStyle()
-	search("citation-style")
+	search("citation-style:")
 	execute $"normal 0f:d$A: {g:citation_style}"
+enddef
+
+def EditBibFilePlace()
+	search("bibliography:")
+	execute $"normal 0f:d$A: {g:bibfile}"
 enddef
 
 def NewNote(phrase: string = "" )
@@ -83,6 +94,7 @@ def NewNote(phrase: string = "" )
 	EditAuthor(g:notes_author)
 	EditDate(date)
 	EditCitationStyle()
+	EditBibFilePlace()
 	EditTitle(phrase)
 enddef
 
@@ -256,7 +268,7 @@ def WriteBackReferences()
 	var i = 0
 	for ref in backrefs
 		i = i + 1
-		execute $"normal! o{i}-{CreateNoteLink(ref)}"
+		execute $"normal! o{i}-{CreateNoteLink(ref)}\<esc>o"
 	endfor
 enddef
 
@@ -316,6 +328,7 @@ enddef
 def WordSearch(keyword: string)
 		NoteSearch(keyword)
 enddef
+
 
 command -nargs=* Newnote :call NewNote(<q-args>)
 command -nargs=0 Writeback :call WriteBackReferences()
