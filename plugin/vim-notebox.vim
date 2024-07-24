@@ -260,8 +260,8 @@ def WriteBackReferences()
 	var backrefs = BackReferences(id)
 	cursor(line('$'), 100)
 	var backrefHeaderLine = search('#BackReferences', 'b')
-	if backrefHeaderLine < 0
-		execute "normal! Go#BackReferences "
+	if backrefHeaderLine == 0
+		execute "normal! Go\<esc>o#BackReferences "
 		backrefHeaderLine = getcurpos()[1]
 	endif
 	setpos('.', [0, backrefHeaderLine, 0])
