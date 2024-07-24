@@ -372,6 +372,10 @@ if !hasmapto('<Plug>Whichbox;')
  	map <unique> <Leader>wb <Plug>Whichbox;
 endif
 
+if !hasmapto('<Plug>WriteBacklinks;')
+ 	map <unique> <Leader>bl <Plug>WriteBacklinks;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -395,3 +399,6 @@ noremap <SID>Notesearch :Notesearch
 
 noremap <unique> <script> <Plug>Whichbox; <SID>Whichbox
 noremap <SID>Whichbox :call <SID>WhichBox()<CR>
+
+noremap <unique> <script> <Plug>WriteBacklinks; <SID>WriteBacklinks
+noremap <SID>WriteBacklinks :call <SID>WriteBackReferences()<CR>
