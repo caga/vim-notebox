@@ -19,8 +19,8 @@ enddef
 def CreatePdfDirectory(): string
 	if CheckPdfDirectory() == "no"
 		system($"mkdir {g:notes_directory}/pdfs -p")
-		echo "pdf directory created under {g:notes_directory}/pdfs"
-	return $"pdf directory created under {g:notes_directory}/pdfs"
+		echo $"'pdfs' directory created: {g:notes_directory}/pdfs"
+	return $"pdf directory created: {g:notes_directory}/pdfs"
 	endif
 	return $"pdf directory is under {g:notes_directory}/pdfs"
 enddef
