@@ -337,7 +337,7 @@ def NoteSearch(keywords: string): string
 		return files
 enddef
 
-def g:NoteSearchInBox(keywords: string)
+def NoteSearchInBox(keywords: string)
 	var cbox = WhichBox()
 	ChooseBoxSilent()
 	NoteSearch(keywords)
@@ -357,7 +357,7 @@ command -nargs=0 Openlastnote :call OpenLastNote()
 command -nargs=0 Openbox :call OpenNoteBox()
 command -nargs=0 Choosebox :call ChooseBox()
 command -nargs=* Notesearch :call NoteSearch(<q-args>)
-command -nargs=* NotesearchInbox :call NoteSearchInBox(<q-args>)
+command -nargs=* NoteSearchInbox :call NoteSearchInBox(<q-args>)
 command -nargs=0 Whichbox :call WhichBox()
 
 if !hasmapto('<Plug>Newnote;')
