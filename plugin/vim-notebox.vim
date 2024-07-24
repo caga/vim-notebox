@@ -41,13 +41,24 @@ def ChooseBox(): string
 	endif
 	var cbox = g:boxes[str2nr(box) - 1]
 	g:notes_directory = cbox
-# 	execute $"cd {g:notes_directory}"
 	echo "\n" .. "Current Note Box: " .. g:notes_directory
 	return cbox
 enddef
 
+def ChooseBoxSilent(): string
+	ListBoxes()
+	var box = input($"Please choose box:")
+	if box == ""
+		var cbox = g:boxes[0]
+		g:notes_directory = cbox
+		return cbox
+	endif
+	var cbox = g:boxes[str2nr(box) - 1]
+	g:notes_directory = cbox
+	return cbox
+enddef
 def WhichBox(): string
-	echo "\n" .. "Current Note Box: " .. g:notes_directory
+	echo "Current Note Box: " .. g:notes_directory
 	return g:notes_directory
 enddef
 
@@ -276,7 +287,7 @@ enddef
 def OpenNoteBox()
 	execute $"e {g:notes_directory}"
 enddef
-def SingleTermSearchInBox(keyword: string): string
+def SingleTermSearch(keyword: string): string
  		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*.md"), ' ')
 		return results
 enddef
@@ -297,7 +308,7 @@ def NoteSearch(keywords: string): string
 	endif
 
 	if len(Keywords) == 1 
-		var files = SingleTermSearchInBox(Keywords[0])
+		var files = SingleTermSearch(Keywords[0])
 		cgetexpr split(files)
 		copen
 		return files
@@ -308,7 +319,7 @@ def NoteSearch(keywords: string): string
 
 	for keyword in Keywords
 		if i == 0
-			files = SingleTermSearchInBox(keyword)
+			files = SingleTermSearch(keyword)
 			i = i + 1
 			continue
 		endif
@@ -325,6 +336,14 @@ def NoteSearch(keywords: string): string
 	  	endif
 		return files
 enddef
+
+def g:NoteSearchInBox(keywords: string)
+	var cbox = WhichBox()
+	ChooseBoxSilent()
+	NoteSearch(keywords)
+	g:notes_directory = cbox
+enddef
+
 
 def WordSearch(keyword: string)
 		NoteSearch(keyword)
