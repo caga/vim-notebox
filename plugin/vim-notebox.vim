@@ -269,7 +269,7 @@ def WriteBackReferences()
 	var i = 0
 	for ref in backrefs
 		i = i + 1
-		execute $"normal! o{i}-{CreateNoteLink(ref)}\<esc>o"
+		execute $"normal! o{i}- {CreateNoteLink(ref)}\<esc>o"
 	endfor
 enddef
 
