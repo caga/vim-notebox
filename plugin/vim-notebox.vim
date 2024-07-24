@@ -239,6 +239,7 @@ enddef
 
 def YankNoteLink(file: string)
 	var link = CreateNoteLink(file)
+	@0 = ""
 	@0 = link
 enddef
 	
@@ -344,7 +345,7 @@ if !hasmapto('<Plug>Newnote;')
 endif
 
 if !hasmapto('<Plug>Yanknotelink;')
-	map <unique> <Leader>nl <Plug>Yanknotelink;
+	map <unique> <Leader>yn <Plug>Yanknotelink;
 endif
 
 if !hasmapto('<Plug>Opennotebox;')

@@ -16,10 +16,13 @@ def CheckPdfDirectory(): string
 	return res
 enddef
 
-def g:CreatePdfDirectory()
+def CreatePdfDirectory(): string
 	if CheckPdfDirectory() == "no"
 		system($"mkdir {g:notes_directory}/pdfs -p")
+		echo "pdf directory created under {g:notes_directory}/pdfs"
+	return $"pdf directory created under {g:notes_directory}/pdfs"
 	endif
+	return $"pdf directory is under {g:notes_directory}/pdfs"
 enddef
 
 def IsNewerFile(file1: string, file2: string): number
@@ -38,15 +41,13 @@ def Convert2Pdf(file: string): string
 	var pdfFilename = trimmedFilename .. ".pdf"
 	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
  	var file2 = pdfFullPath
-# 	var file2 = $"pdfs/{pdfFilename}"
-	var fileden = expand("%.")
+	CreatePdfDirectory()
+	# var fileden = expand("%.")
 	if IsNewerFile(file, file2) == 1
 		var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter pandoc-crossref --citeproc")
-		echom res
-		echo res
 		return res
 	endif
-# 	var res = system($"pandoc -f markdown -t pdf {file} -o pdfs/{trimmedFilename}.pdf --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter pandoc-crossref --citeproc")
+	echo "Convertion is not needed"
 	return "Convertion is not needed"
 enddef
 
@@ -57,7 +58,6 @@ def ViewPdf(file: string)
 	var pdfFilename = trimmedFilename .. ".pdf"
 	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
 	Convert2Pdf(file)
-#  	var res = system($"zathura {pdfdir}/{pdfFilename} & disown")
   	var res = system($"zathura {pdfFullPath} & disown")
 enddef
 
