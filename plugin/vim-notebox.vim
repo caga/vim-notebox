@@ -349,6 +349,25 @@ def WordSearch(keyword: string)
 		NoteSearch(keyword)
 enddef
 
+def AreYouSure(action: string): number
+	var res = input($"Are you sure to {action}? (y/n): ")
+	if res == "y"
+		#echo " -> Done!"
+		return 1
+	endif
+	if res == "n"
+		#echo " -> Not Done!"
+		return 0
+	endif
+	if res != "y" && res != "n"
+		#echo " -> Not Understood"
+		return -1
+	endif
+	return -2
+enddef
+
+
+
 
 command -nargs=* Newnote :call NewNote(<q-args>)
 command -nargs=0 Writeback :call WriteBackReferences()
