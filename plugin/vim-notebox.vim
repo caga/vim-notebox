@@ -357,6 +357,7 @@ command -nargs=0 Openlastnote :call OpenLastNote()
 command -nargs=0 Openbox :call OpenNoteBox()
 command -nargs=0 Choosebox :call ChooseBox()
 command -nargs=* Notesearch :call NoteSearch(<q-args>)
+command -nargs=* NotesearchInbox :call NoteSearchInBox(<q-args>)
 command -nargs=0 Whichbox :call WhichBox()
 
 if !hasmapto('<Plug>Newnote;')
@@ -395,6 +396,10 @@ if !hasmapto('<Plug>WriteBacklinks;')
  	map <unique> <Leader>bl <Plug>WriteBacklinks;
 endif
 
+if !hasmapto('<Plug>NoteSearchInbox;')
+ 	map <unique> <Leader>nsb <Plug>NoteSearchInbox;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -421,3 +426,6 @@ noremap <SID>Whichbox :call <SID>WhichBox()<CR>
 
 noremap <unique> <script> <Plug>WriteBacklinks; <SID>WriteBacklinks
 noremap <SID>WriteBacklinks :call <SID>WriteBackReferences()<CR>
+
+noremap <unique> <script> <Plug>NoteSearchInbox; <SID>NoteSearchInbox
+noremap <SID>NoteSearchInbox :NoteSearchInbox 
