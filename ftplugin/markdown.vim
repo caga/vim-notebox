@@ -62,13 +62,45 @@ def ViewPdf(file: string)
 enddef
 
 
+def AreYouSure(action: string): number
+	var res = input($"Are you sure to {action}? (y/n): ")
+	if res == "y"
+		#echo " -> Done!"
+		return 1
+	endif
+	if res == "n"
+		#echo " -> Not Done!"
+		return 0
+	endif
+	if res != "y" && res != "n"
+		#echo " -> Not Understood"
+		return -1
+	endif
+	return -2
+enddef
+
+def DeleteCurrentNote()
+	var sure = AreYouSure("delete current note")
+	if sure == 1
+		delete(expand('%')) | bdelete!
+		echo " -> Current Note Deleted"
+	else
+		echo " -> Note not deleted"
+	endif
+enddef
+
 command -buffer -nargs=0 Viewpdf :call ViewPdf(expand("%"))
 
 if !hasmapto('<Plug>Viewpdf;')
 	map <buffer> <unique> <Leader>v <Plug>Viewpdf;
 endif
 
+if !hasmapto('<Plug>DeleteNote;')
+	map <buffer> <unique> <Leader>dn <Plug>Deletenote;
+endif
+
 nnoremap <buffer> <Plug>Viewpdf :call <SID>ViewPdf(expand("%"))<CR>
+nnoremap <buffer> <Plug>Deletenote :call <SID>DeleteCurrentNote()<CR>
 
 # def g:Deneme(file1: string, file2: string): string
 # 	var res = IsNewerFile(file1, file2)
