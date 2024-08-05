@@ -3,7 +3,8 @@ vim9script noclear
 if exists("b:did_ftplugin")
 	finish
 endif
-b:did_ftpugin = 1
+
+b:did_ftplugin = 1
 
 # if !exists("g:pdf_directory")
 # 	 g:pdf_directory = "~/notespdf"
@@ -96,13 +97,8 @@ if !hasmapto('<Plug>Viewpdf;')
 endif
 
 if !hasmapto('<Plug>DeleteNote;')
-	map <buffer> <unique> <Leader>dn <Plug>Deletenote;
+	map <buffer> <unique> <Leader>dn <Plug>Deletenote
 endif
 
 nnoremap <buffer> <Plug>Viewpdf :call <SID>ViewPdf(expand("%"))<CR>
 nnoremap <buffer> <Plug>Deletenote :call <SID>DeleteCurrentNote()<CR>
-
-# def g:Deneme(file1: string, file2: string): string
-# 	var res = IsNewerFile(file1, file2)
-# 	return res
-# enddef
