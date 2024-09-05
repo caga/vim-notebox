@@ -22,6 +22,7 @@ if !exists("g:bibfile")
 	 g:bibfile = $"{plugindir}/plugin/notes.bib"
 endif
 
+#execute $"cd {g:notes_directory}"
 
 def ListBoxes()
 	var i = 1
@@ -41,7 +42,8 @@ def ChooseBox(): string
 	endif
 	var cbox = g:boxes[str2nr(box) - 1]
 	g:notes_directory = cbox
-	echo "\n" .. "Current Note Box: " .. g:notes_directory
+	execute $"cd {g:notes_directory}"
+	echo "\n" .. "Current Note Box and pwd: " .. g:notes_directory
 	return cbox
 enddef
 
@@ -237,6 +239,11 @@ def GetNoteId(file: string): number
 	return id
 enddef
 
+def GetNoteId2(file: string): string
+ 	var file_id = fnamemodify(file, ":t:r")
+	return file_id
+enddef
+
 def GetNoteExplanation(file: string): string
 	var soup = readfile(file)
 	var exp = join(split(soup[4])[1 : ])
@@ -250,7 +257,6 @@ enddef
 
 def YankNoteLink(file: string)
 	var link = CreateNoteLink(file)
-	@0 = ""
 	@0 = link
 enddef
 	
@@ -262,6 +268,14 @@ def BackReferences(id: number): list<string>
 			add(referees, file)
 		endif
 	endfor
+	#for file in files
+	#
+	#if GetNoteId(file) != id && GetNoteId2(file) > 0
+			#add(referees, file)
+	#	endif
+	#endfor
+	var dummy = sort(referees)
+	echom dummy
 	return sort(referees)
 enddef
 

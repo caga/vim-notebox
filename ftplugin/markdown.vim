@@ -1,5 +1,7 @@
 vim9script noclear
 
+var pdfdir = $"{g:notes_directory}/pdfs"
+
 if exists("b:did_ftplugin")
 	finish
 endif
@@ -10,7 +12,6 @@ b:did_ftplugin = 1
 # 	 g:pdf_directory = "~/notespdf"
 # endif
 
-var pdfdir = $"{g:notes_directory}/pdfs"
 
 def CheckPdfDirectory(): string
 	var res = trim(system($"[ -d {pdfdir} ] && echo 'yes' || echo 'no'"))
@@ -46,9 +47,10 @@ def Convert2Pdf(file: string): string
 	# var fileden = expand("%.")
 	if IsNewerFile(file, file2) == 1
 		var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter pandoc-crossref --citeproc")
+		echom "Doing the convertion"
 		return res
 	endif
-	echo "Convertion is not needed"
+	echom "Convertion is not needed"
 	return "Convertion is not needed"
 enddef
 
@@ -58,6 +60,7 @@ def ViewPdf(file: string)
 	var trimmedFilename = fnamemodify(file, ":t:r")
 	var pdfFilename = trimmedFilename .. ".pdf"
 	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
+	echom pdfFullPath
 	Convert2Pdf(file)
   	var res = system($"zathura {pdfFullPath} & disown")
 enddef
