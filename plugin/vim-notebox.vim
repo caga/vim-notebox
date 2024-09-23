@@ -244,6 +244,11 @@ def GetNoteId2(file: string): string
 	return file_id
 enddef
 
+def g:IsNote(file: string): number
+	var id = GetNoteId(file)
+	return id
+enddef
+
 def GetNoteExplanation(file: string): string
 	var soup = readfile(file)
 	var exp = join(split(soup[4])[1 : ])
@@ -257,7 +262,8 @@ enddef
 
 def YankNoteLink(file: string)
 	var link = CreateNoteLink(file)
-	@0 = link
+	echom link
+	@@ = link
 enddef
 	
 def BackReferences(id: number): list<string>
@@ -274,11 +280,37 @@ def BackReferences(id: number): list<string>
 			#add(referees, file)
 	#	endif
 	#endfor
-	var dummy = sort(referees)
-	echom dummy
 	return sort(referees)
 enddef
 
+def OrphanNotes(): list<string>
+	var files = split(system($"grep -lid skip id: {g:notes_directory}/*"))
+	var orphans = []
+	for file in files
+		var id = GetNoteId(file)
+		var referees = BackReferences(id)
+		if id > 0 && referees == []
+			add(orphans, file)
+		endif
+	endfor
+	var dummy = sort(orphans)
+	echom dummy
+	return sort(orphans)
+enddef
+
+def g:WriteOrphanNotes()
+	exe $"new {g:notes_directory/OrphanNotes.md"}
+	exe $"normal! ggvG$dd"
+	var orphans = OrphanNotes()
+	execute "normal! oOrphanNotes:"
+	var i = 0
+	for orphan in orphans
+		i = i + 1
+		execute $"normal! o{i}- {CreateNoteLink(orphan)}\<esc>o"
+	endfor
+enddef
+
+	
 def WriteBackReferences()
 	var file = expand("%:p")
 	var id = GetNoteId(file)
