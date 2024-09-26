@@ -235,7 +235,12 @@ enddef
 
 def GetNoteId(file: string): number
 	var soup = readfile(file)
-	var id = str2nr(split(soup[1])[1])
+	var id = 0
+	try
+	id = str2nr(split(soup[1])[1])
+	catch
+		return 0
+	endtry
 	return id
 enddef
 
@@ -293,13 +298,13 @@ def OrphanNotes(): list<string>
 			add(orphans, file)
 		endif
 	endfor
-	var dummy = sort(orphans)
-	echom dummy
+	# var dummy = sort(orphans)
+	# echom dummy
 	return sort(orphans)
 enddef
 
-def g:WriteOrphanNotes()
-	exe $"new {g:notes_directory/OrphanNotes.md"}
+def WriteOrphanNotes()
+	exe $"new {g:notes_directory}/OrphanNotes.md"
 	exe $"normal! ggvG$dd"
 	var orphans = OrphanNotes()
 	execute "normal! oOrphanNotes:"
@@ -406,6 +411,7 @@ command -nargs=0 Choosebox :call ChooseBox()
 command -nargs=* Notesearch :call NoteSearch(<q-args>)
 command -nargs=* NoteSearchInbox :call NoteSearchInBox(<q-args>)
 command -nargs=0 Whichbox :call WhichBox()
+command -nargs=0 Orphans :call WriteOrphanNotes()
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
