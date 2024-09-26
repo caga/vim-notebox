@@ -46,8 +46,11 @@ def Convert2Pdf(file: string): string
 	CreatePdfDirectory()
 	# var fileden = expand("%.")
 	if IsNewerFile(file, file2) == 1
-		var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter pandoc-crossref --citeproc")
+		var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc")
+		
+	#	var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter")
 		echom "Doing the convertion"
+		echom res
 		return res
 	endif
 	echom "Convertion is not needed"
