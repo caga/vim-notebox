@@ -7,3 +7,4 @@ Currently i am developing the main features, not fully finished and no documents
 it is vim9script btw. :)
 :)
 
+.
