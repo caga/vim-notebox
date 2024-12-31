@@ -22,6 +22,9 @@ if !exists("g:bibfile")
 	 g:bibfile = $"{plugindir}/plugin/notes.bib"
 endif
 
+#if !exists("g:pdfdir")
+#	g:pdfdir = $"{g:notes_directory}"
+#endif
 #execute $"cd {g:notes_directory}"
 
 def ListBoxes()
@@ -37,6 +40,7 @@ def ChooseBox(): string
 	if box == ""
 		var cbox = g:boxes[0]
 		g:notes_directory = cbox
+#		g:pdfdir = cbox #becareful with that line - you may want to delete it in the future
 		echo "\n" .. "Current Note Box: " .. g:notes_directory
 		return cbox
 	endif

@@ -1,6 +1,8 @@
 vim9script noclear
 
-var pdfdir = $"{g:notes_directory}/pdfs"
+#var pdfdir = $"{g:notes_directory}/pdfs"
+var pdfdir = $"{g:notes_directory}"
+#var pdfdir = $"{g:pdfdir}"
 
 if exists("b:did_ftplugin")
 	finish
