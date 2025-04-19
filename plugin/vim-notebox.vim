@@ -138,6 +138,14 @@ def LastNote(): string
 	return lnote
 enddef
 
+def LastNotes(snlf: string)
+	var nlf = str2nr(snlf)
+	var cmd = $"ls *.md -t|head -n {nlf}"
+	var lnotes = systemlist(cmd)
+	cgetexpr lnotes
+	copen
+enddef
+
 def OpenLastNote()
 	var file = LastNote()
 	execute $"edit {file}"
@@ -416,6 +424,8 @@ command -nargs=* Notesearch :call NoteSearch(<q-args>)
 command -nargs=* NoteSearchInbox :call NoteSearchInBox(<q-args>)
 command -nargs=0 Whichbox :call WhichBox()
 command -nargs=0 Orphans :call WriteOrphanNotes()
+command -nargs=1 Lastnotes :call LastNotes(<q-args>)
+
 
 if !hasmapto('<Plug>Newnote;')
 	map <unique> <Leader>nn <Plug>Newnote;
