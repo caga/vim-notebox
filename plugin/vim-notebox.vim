@@ -283,20 +283,55 @@ def YankNoteLink(file: string)
 	@@ = link
 enddef
 	
+#def BackReferencesOld(id: number): list<string>
+#	var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
+#	var referees = []
+#	for file in files
+#		if GetNoteId(file) != id && GetNoteId(file) > 0
+#			add(referees, file)
+#		endif
+#	endfor
+#	return sort(referees)
+#enddef
+
+#First Line Number Function
+def FLN(st: string, file: string): number
+	var raw_number = systemlist($"grep -n '{st}' {file}|cut -d':' -f1")
+	var first_number = -2
+	try
+	first_number = str2nr(raw_number[0])
+	catch
+		return -1
+	endtry
+	return first_number
+enddef
+
+
+
+# Last Line Number Function
+def LLN(st: string, file: string): number
+	var raw_number = systemlist($"grep -n '{st}' {file}|cut -d':' -f1")
+	var last_number = -2
+	try
+	last_number = str2nr(raw_number[-1])
+	catch
+		return -1
+	endtry
+	return last_number
+enddef
+
 def BackReferences(id: number): list<string>
+	var brl: number 
+	var rfl: number 
+	var referees: list<string>
 	var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
-	var referees = []
 	for file in files
-		if GetNoteId(file) != id && GetNoteId(file) > 0
+		brl = LLN("#BackReferences", file)
+		rfl = FLN($"{id}", file)
+		if GetNoteId(file) != id && GetNoteId(file) > 0 && (rfl > 0) && (rfl < brl) 
 			add(referees, file)
 		endif
 	endfor
-	#for file in files
-	#
-	#if GetNoteId(file) != id && GetNoteId2(file) > 0
-			#add(referees, file)
-	#	endif
-	#endfor
 	return sort(referees)
 enddef
 
