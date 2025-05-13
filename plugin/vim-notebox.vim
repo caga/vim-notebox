@@ -91,6 +91,13 @@ def EditDate(dat: string)
 
 enddef
 
+def ModifyDate()
+	var date = strftime("%d/%m/%y")
+	search("modify:")
+	execute $"normal 0f:d$A: {date}"
+
+enddef
+
 def EditCitationStyle()
 	search("citation-style:")
 	execute $"normal 0f:d$A: {g:citation_style}"
@@ -460,6 +467,7 @@ command -nargs=* NoteSearchInbox :call NoteSearchInBox(<q-args>)
 command -nargs=0 Whichbox :call WhichBox()
 command -nargs=0 Orphans :call WriteOrphanNotes()
 command -nargs=1 Lastnotes :call LastNotes(<q-args>)
+command -nargs=0 Modifydate :call ModifyDate()
 
 
 if !hasmapto('<Plug>Newnote;')
@@ -502,6 +510,10 @@ if !hasmapto('<Plug>NoteSearchInbox;')
  	map <unique> <Leader>nsb <Plug>NoteSearchInbox;
 endif
 
+if !hasmapto('<Plug>Modifydate;')
+ 	map <unique> <Leader>md <Plug>Modifydate;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -531,3 +543,6 @@ noremap <SID>WriteBacklinks :call <SID>WriteBackReferences()<CR>
 
 noremap <unique> <script> <Plug>NoteSearchInbox; <SID>NoteSearchInbox
 noremap <SID>NoteSearchInbox :NoteSearchInbox 
+
+noremap <unique> <script> <Plug>Modifydate; <SID>Modifydate
+noremap <SID>Modifydate :call <SID>ModifyDate()<CR>

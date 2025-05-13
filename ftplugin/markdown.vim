@@ -44,6 +44,7 @@ def Convert2Pdf(file: string): string
 	var trimmedFilename = fnamemodify(file, ":t:r")
 	var pdfFilename = trimmedFilename .. ".pdf"
 	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
+	#var pdfFullPath = $"{pdfdir}{pdfFilename}"
  	var file2 = pdfFullPath
 	CreatePdfDirectory()
 	# var fileden = expand("%.")
@@ -65,6 +66,7 @@ def ViewPdf(file: string)
 	var trimmedFilename = fnamemodify(file, ":t:r")
 	var pdfFilename = trimmedFilename .. ".pdf"
 	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
+	#var pdfFullPath = $"{pdfdir}{pdfFilename}"
 	echom pdfFullPath
 	Convert2Pdf(file)
   	var res = system($"zathura {pdfFullPath} & disown")
