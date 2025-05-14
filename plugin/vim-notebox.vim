@@ -527,7 +527,8 @@ noremap <unique> <script> <Plug>Newnote; <SID>Newnote
 noremap <SID>Newnote :call <SID>NewNote()<CR>
 
 noremap <unique> <script> <Plug>Yanknotelink; <SID>Yanknotelink
-noremap <SID>Yanknotelink :call <SID>YankNoteLink(expand("%"))<CR>
+#noremap <SID>Yanknotelink :call <SID>YankNoteLink(expand("%"))<CR>
+noremap <SID>Yanknotelink :call <SID>YankNoteLink(expand("%:t"))<CR>
 
 noremap <unique> <script> <Plug>Openbox; <SID>Openbox
 noremap <SID>Openbox :call <SID>OpenNoteBox()<CR>
