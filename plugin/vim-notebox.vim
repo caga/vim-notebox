@@ -22,10 +22,16 @@ if !exists("g:bibfile")
 	 g:bibfile = $"{plugindir}/plugin/notes.bib"
 endif
 
-#if !exists("g:pdfdir")
-#	g:pdfdir = $"{g:notes_directory}"
-#endif
+if !exists("g:pdfdir")
+	g:pdfdir = $"{g:notes_directory}/pdfs"
+endif
 #execute $"cd {g:notes_directory}"
+
+if !exists("g:docdir")
+	g:docdir = $"{g:notes_directory}/docs"
+endif
+
+
 
 def ListBoxes()
 	var i = 1
