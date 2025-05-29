@@ -52,6 +52,8 @@ def ChooseBox(): string
 	endif
 	var cbox = g:boxes[str2nr(box) - 1]
 	g:notes_directory = cbox
+	g:pdfdir = $"{g:notes_directory}/pdfs"
+	g:docdir = $"{g:notes_directory}/docs"
 	execute $"cd {g:notes_directory}"
 	echo "\n" .. "Current Note Box and pwd: " .. g:notes_directory
 	return cbox

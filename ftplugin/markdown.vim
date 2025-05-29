@@ -62,6 +62,16 @@ def Convert2Pdf(file: string): string
  	var file2 = pdfFullPath
 	CreatePdfDirectory()
 	# var fileden = expand("%.")
+	
+	#var alternateFileName = input($"please input the filename (default is {pdfFilename}): ")
+	
+	#if alternateFileName != pdfFilename && alternateFileName != null
+	#	pdfFilename = alternateFileName
+	#	pdfFullPath = $"{pdfdir}/{pdfFilename}"
+	#	file2 = pdfFullPath
+	#	echom "alternate filename is to be used"
+	#endif
+
 	if IsNewerFile(file, file2) == 1
 		var res = system($"pandoc -f markdown -t pdf {file} -o {file2} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc")
 		
@@ -70,6 +80,7 @@ def Convert2Pdf(file: string): string
 		echom res
 		return res
 	endif
+	#if filereadable(file2)
 	echom "Convertion is not needed"
 	return "Convertion is not needed"
 enddef
@@ -147,9 +158,14 @@ if !hasmapto('<Plug>Viewpdf;')
 	map <buffer> <unique> <Leader>v <Plug>Viewpdf;
 endif
 
+if !hasmapto('<Plug>Viewdoc;')
+	map <buffer> <unique> <Leader>vd <Plug>Viewdoc;
+endif
+
 if !hasmapto('<Plug>DeleteNote;')
 	map <buffer> <unique> <Leader>dn <Plug>Deletenote
 endif
 
 nnoremap <buffer> <Plug>Viewpdf :call <SID>ViewPdf(expand("%"))<CR>
+nnoremap <buffer> <Plug>Viewdoc :call <SID>ViewDoc(expand("%"))<CR>
 nnoremap <buffer> <Plug>Deletenote :call <SID>DeleteCurrentNote()<CR>
