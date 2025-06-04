@@ -32,7 +32,6 @@ if !exists("g:docdir")
 endif
 
 
-
 def ListBoxes()
 	var i = 1
 	for box in g:boxes
@@ -40,13 +39,14 @@ def ListBoxes()
 		i = i + 1
 	endfor
 enddef
+
 def ChooseBox(): string
 	ListBoxes()
 	var box = input($"Please choose box:")
 	if box == ""
 		var cbox = g:boxes[0]
 		g:notes_directory = cbox
-#		g:pdfdir = cbox #becareful with that line - you may want to delete it in the future
+		g:pdfdir = cbox #becareful with that line - you may want to delete it in the future
 		echo "\n" .. "Current Note Box: " .. g:notes_directory
 		return cbox
 	endif
@@ -71,6 +71,7 @@ def ChooseBoxSilent(): string
 	g:notes_directory = cbox
 	return cbox
 enddef
+
 def WhichBox(): string
 	echo "Current Note Box: " .. g:notes_directory
 	return g:notes_directory
