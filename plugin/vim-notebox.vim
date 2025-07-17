@@ -345,6 +345,9 @@ def BackReferences(id: number, thefile: string): list<string>
 	var files = split(system($"grep -lid skip {thefile} {g:notes_directory}/*"))
 	for file in files
 		brl = LLN("#BackReferences", file)
+		if brl == -1 
+			brl = 1000000
+		endif
 		#rfl = FLN($"{id}", file)
 		rfl = FLN(thefile, file)
 		if GetNoteId(file) != id && GetNoteId(file) > 0 && (rfl > 0) && (rfl < brl) 
