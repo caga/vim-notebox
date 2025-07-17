@@ -336,14 +336,17 @@ def LLN(st: string, file: string): number
 	return last_number
 enddef
 
-def BackReferences(id: number): list<string>
+
+def BackReferences(id: number, thefile: string): list<string>
 	var brl: number 
 	var rfl: number 
 	var referees: list<string>
-	var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
+	#var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
+	var files = split(system($"grep -lid skip {thefile} {g:notes_directory}/*"))
 	for file in files
 		brl = LLN("#BackReferences", file)
-		rfl = FLN($"{id}", file)
+		#rfl = FLN($"{id}", file)
+		rfl = FLN(thefile, file)
 		if GetNoteId(file) != id && GetNoteId(file) > 0 && (rfl > 0) && (rfl < brl) 
 			add(referees, file)
 		endif
@@ -352,11 +355,11 @@ def BackReferences(id: number): list<string>
 enddef
 
 def OrphanNotes(): list<string>
-	var files = split(system($"grep -lid skip id: {g:notes_directory}/*"))
+	var files = split(system($"grep -lid skip id: {g:notes_directory}/* | xargs -L 1 basename"))
 	var orphans = []
 	for file in files
 		var id = GetNoteId(file)
-		var referees = BackReferences(id)
+		var referees = BackReferences(id, file)
 		if id > 0 && referees == []
 			add(orphans, file)
 		endif
@@ -380,9 +383,9 @@ enddef
 
 	
 def WriteBackReferences()
-	var file = expand("%:p")
+	var file = expand("%:t")
 	var id = GetNoteId(file)
-	var backrefs = BackReferences(id)
+	var backrefs = BackReferences(id, file)
 	cursor(line('$'), 100)
 	var backrefHeaderLine = search('#BackReferences', 'b')
 	if backrefHeaderLine == 0
