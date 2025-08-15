@@ -117,9 +117,21 @@ def EditBibFilePlace()
 	execute $"normal 0f:d$A: {g:bibfile}"
 enddef
 
+def CapitalizeAndUnite(phrase: string = ""): string
+	var prefix = phrase
+	var dummy = split(prefix)
+	var capitalAndUnite = ""
+	for word in dummy
+		capitalAndUnite = capitalAndUnite .. toupper(word[0]) .. word[1 : ]
+	endfor
+	return capitalAndUnite
+enddef
+
 def NewNote(phrase: string = "" )
+
 	var id = localtime()
-	var note = $"{g:notes_directory}/{id}.md"
+	var filename = CapitalizeAndUnite(phrase)
+	var note = $"{g:notes_directory}/{filename .. "_Id" .. id}.md"
 	var date = strftime("%d/%m/%y")
 	exe $"new {note}"
 	exe $":0r {plugindir}/plugin/zettelskeleton.zet"
@@ -131,18 +143,18 @@ def NewNote(phrase: string = "" )
 	EditTitle(phrase)
 enddef
 
-def NoteFilename(id: number): string
-	var file = $"{g:notes_directory}/{id}.md"
-	if !filereadable(expand(file)) 
-		throw $"No Readable File for {file}"
-	endif
-	return file
-enddef
+#def NoteFilename(id: number): string
+#	var file = $"{g:notes_directory}/{id}.md"
+#	if !filereadable(expand(file)) 
+#		throw $"No Readable File for {file}"
+#	endif
+#	return file
+#enddef
 
-def OpenNoteById(id: number)
-	var file = NoteFilename(id)
-		execute $"edit {file}"
-enddef
+#def OpenNoteById(id: number)
+#	var file = NoteFilename(id)
+#		execute $"edit {file}"
+#enddef
 
 def LastNote(): string 
 	var cmd = $"ls {g:notes_directory}/*.md -lt | head -n 1 | tail -n 1 | rev | cut -d' ' -f1 | rev"
@@ -272,10 +284,6 @@ def GetNoteId(file: string): number
 	return id
 enddef
 
-def GetNoteId2(file: string): string
- 	var file_id = fnamemodify(file, ":t:r")
-	return file_id
-enddef
 
 def g:IsNote(file: string): number
 	var id = GetNoteId(file)
@@ -383,7 +391,9 @@ def WriteOrphanNotes()
 		execute $"normal! o{i}- {CreateNoteLink(orphan)}\<esc>o"
 	endfor
 enddef
-
+def g:Deneme()
+	echom "Merhaba"
+enddef
 	
 def WriteBackReferences()
 	var file = expand("%:t")
@@ -533,7 +543,8 @@ noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
 noremap <unique> <script> <Plug>Newnote; <SID>Newnote
-noremap <SID>Newnote :call <SID>NewNote()<CR>
+#noremap <SID>Newnote :call <SID>NewNote()<CR>
+noremap <SID>Newnote :Newnote 
 
 noremap <unique> <script> <Plug>Yanknotelink; <SID>Yanknotelink
 #noremap <SID>Yanknotelink :call <SID>YankNoteLink(expand("%"))<CR>
