@@ -74,7 +74,7 @@ enddef
 def Convert2Doc(mdfile: string, docfile: string): string
 	CreateDocDirectory()
 	if IsNewerFile(mdfile, docfile) == 1
-		var res = system($"pandoc -f markdown -t docx {mdfile} -o {docfile} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.docx")
+		var res = system($"pandoc -f markdown+implicit_figures -t docx {mdfile} -o {docfile} --lua-filter=$HOME/.bin/pandocFilters/links-to-pdf.lua --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.docx")
 		echom "Doing the convertion"
 		echom res
 		return res
