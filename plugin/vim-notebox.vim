@@ -419,6 +419,10 @@ def OpenNoteBox()
 enddef
 def SingleTermSearch(keyword: string): string
  		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*.md"), ' ')
+		if results == ""
+			echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
+			return "nan"
+		endif
 		return results
 enddef
 
@@ -427,7 +431,7 @@ def SingleTermSearchForFiles(keyword: string, files: string): string
 	var results = join(systemlist(searchSentence), ' ')
 	return results
 enddef
-
+	
 def NoteSearch(keywords: string): string
 	set efm=%f
 	var Keywords =  split(keywords)
@@ -439,6 +443,10 @@ def NoteSearch(keywords: string): string
 
 	if len(Keywords) == 1 
 		var files = SingleTermSearch(Keywords[0])
+		if files == "nan"
+			echom "NoteSearch: Exiting Search"
+			return "nan"
+		endif
 		cgetexpr split(files)
 		copen
 		return files
@@ -451,12 +459,15 @@ def NoteSearch(keywords: string): string
 		if i == 0
 			files = SingleTermSearch(keyword)
 			i = i + 1
+			if files == "nan"
+				echom "NoteSearch: First Keyword Returns No Results. Exiting Search"
+				return "nan"
+			endif
 			continue
 		endif
 		files = SingleTermSearchForFiles(keyword, files)
 		i = i + 1
 	endfor
-# 	return files
 	  	if empty(files)
 	  		echo "NoteSearch: There is no search result"
 			cexpr []
