@@ -60,7 +60,7 @@ def Convert2Pdf(mdfile: string, pdffile: string): string
 	CreatePdfDirectory()
 
 	if IsNewerFile(mdfile, pdffile) == 1
-		var res = system($"pandoc -f markdown -t pdf {mdfile} -o {pdffile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc")
+		var res = system($"pandoc -f markdown -t pdf {mdfile} -o {pdffile} --filter pandoc-plot --filter pandoc-crossref --lua-filter $HOME/.bin/links-to-pdf.lua --citeproc")
 		
 		echom "Doing the convertion"
 		echom res
@@ -75,7 +75,7 @@ def Convert2Doc(mdfile: string, docfile: string): string
 	CreateDocDirectory()
 	if IsNewerFile(mdfile, docfile) == 1
 #		var res = system($"pandoc -f markdown+implicit_figures -t docx {mdfile} -o {docfile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/pandocOrjRef.docx")
-		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
+		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
 		echom "Doing the convertion"
 		echom res
 		return res
@@ -106,17 +106,6 @@ def ViewDoc(mdfile: string)
 	Convert2Doc(mdfile, docfile)
  	var res = system($"libreoffice {docfile} & disown")
 enddef
-
-#def ViewDoc(mdfile: string)
-	
-#	var trimmedFilename = fnamemodify(mdfile, ":t:r")
-#	var docFilename = trimmedFilename .. ".odt"
-#	var docFullPath = $"{docdir}/{docFilename}"
-#	#var pdfFullPath = $"{docdir}{docFilename}"
-#	var docfile = docFullPath
-#	Convert2Doc(mdfile, docfile)
-#  	var res = system($"libreoffice {docfile} & disown")
-#enddef
 
 def SaveAsAndView(mdfile: string): string
 	var filetype = str2nr(input("Please select filetype, 1-pdf or 2-doc \n choicenumber?:"))

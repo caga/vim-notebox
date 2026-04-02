@@ -9,6 +9,11 @@ citation-style: csl/advanced-robotics.csl
 colorlinks: true
 keywords:
 modify:
+toc-title: "İçindekiler"
+tableTitle: "Tablo"
+lotTitle: "Tablolar"
+reference-section-title: "Kaynakça"
+figureTitle: "Şekil"
 ---
 
 

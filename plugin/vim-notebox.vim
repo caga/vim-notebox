@@ -1,6 +1,11 @@
 vim9script
+import '/home/osman/.vim/plugged/bibtexcite.vim/autoload/bibtexcite.vim'
 
 var plugindir = expand('<sfile>:p:h:h')
+
+#if !exists("b:bibtexcite_bibfile")
+#	 b:bibtexcite#getbibfile() = "notes.bib"
+#endif
 
 if !exists("g:notes_directory")
 	 g:notes_directory = "~/notes"
@@ -18,17 +23,27 @@ if !exists("g:boxes")
 	g:boxes = ["~/notes", "~/notes2"]
 endif
 
+if !exists("g:bibfiles_directory")
+	 g:bibfiles_directory = "bibfiles"
+endif
+
 if !exists("g:bibfile")
 	 g:bibfile = $"{plugindir}/plugin/notes.bib"
 endif
 
+#if !exists("g:bibfile")
+#	 g:bibfile = $"{plugindir}/plugin/notes.bib"
+#endif
+
 if !exists("g:pdfdir")
-	g:pdfdir = $"{g:notes_directory}/pdfs"
+	#g:pdfdir = $"{g:notes_directory}/pdfs"
+	g:pdfdir = "pdfs"
 endif
 #execute $"cd {g:notes_directory}"
 
 if !exists("g:docdir")
-	g:docdir = $"{g:notes_directory}/docs"
+	#g:docdir = $"{g:notes_directory}/docs"
+	g:docdir = "docs"
 endif
 
 
@@ -46,18 +61,22 @@ def ChooseBox(): string
 	if box == ""
 		var cbox = g:boxes[0]
 		g:notes_directory = cbox
-		g:pdfdir = cbox #becareful with that line - you may want to delete it in the future
+#		g:pdfdir = cbox #becareful with that line - you may want to delete it in the future
 		echo "\n" .. "Current Note Box: " .. g:notes_directory
 		return cbox
 	endif
 	var cbox = g:boxes[str2nr(box) - 1]
 	g:notes_directory = cbox
-	g:pdfdir = $"{g:notes_directory}/pdfs"
-	g:docdir = $"{g:notes_directory}/docs"
+	#g:pdfdir = $"{g:notes_directory}/pdfs"
+	#g:docdir = $"{g:notes_directory}/docs"
+	g:pdfdir = "pdfs"
+	g:docdir = "docs"
+	g:bibfiles_directory = "bibfiles"
 	execute $"cd {g:notes_directory}"
 	echo "\n" .. "Current Note Box and pwd: " .. g:notes_directory
 	return cbox
 enddef
+
 
 def ChooseBoxSilent(): string
 	ListBoxes()
@@ -89,10 +108,9 @@ def EditAuthor(auth: string)
 enddef
 
 def EditTitle(exp: string)
-	search("title:")
+	search('^title:')
 	execute $"normal 0f:d$A: {exp} "
 enddef
-
 
 def EditDate(dat: string)
 	search("date:")
@@ -104,7 +122,6 @@ def ModifyDate()
 	var date = strftime("%d/%m/%y")
 	search("modify:")
 	execute $"normal 0f:d$A: {date}"
-
 enddef
 
 def EditCitationStyle()
@@ -112,10 +129,24 @@ def EditCitationStyle()
 	execute $"normal 0f:d$A: {g:citation_style}"
 enddef
 
-def EditBibFilePlace()
+def EditBibFilePlace(bibfile: string ="bibfiles/notes.bib")
 	search("bibliography:")
-	execute $"normal 0f:d$A: {g:bibfile}"
+	execute $"normal 0f:d$A: {bibfile}"
 enddef
+
+# Bu EditBibFilePlace2 bibtexcite ile aynı bibfile kullanmak için yazıldı:
+def EditBibFilePlace2()
+	var bibfile2 = bibtexcite#get_bibfile()
+	search("bibliography:")
+	execute $"normal 0f:d$A: {bibfile2}"
+enddef
+
+#def EditBibFilePlace3(id)
+#	bibtexcite#bibtexcite_bibfile = 
+	#var bibfile = ()
+	#search("bibliography:")
+	#execute $"normal 0f:d$A: {bibfile2}"
+#enddef
 
 def CapitalizeAndUnite(phrase: string = ""): string
 	var prefix = phrase
@@ -131,8 +162,10 @@ def NewNote(phrase: string = "" )
 
 	var id = localtime()
 	var filename = CapitalizeAndUnite(phrase)
-	var note = $"{g:notes_directory}/{filename .. "_Id" .. id}.md"
+#	var note = $"{g:notes_directory}/{filename .. "_Id" .. id}.md"
+	var note = $"{id}" .. ".md"
 	var date = strftime("%d/%m/%y")
+	var bibfile = $"{id}" .. ".bib"
 	exe $"new {note}"
 	exe $":0r {plugindir}/plugin/zettelskeleton.zet"
 	EditNoteId(id)
@@ -142,6 +175,65 @@ def NewNote(phrase: string = "" )
 	EditBibFilePlace()
 	EditTitle(phrase)
 enddef
+
+def CheckFileExist(file: string): string
+	var res = trim(system($"[ -f {file} ] && echo 'yes' || echo 'no'"))
+	return res
+enddef
+
+def CreateBibFileForNote(file: string): string
+	var id = GetNoteId(file)
+	var bibfileName = id .. '.bib'
+	var bibfileFullPath = $"{g:bibfiles_directory}/{bibfileName}"
+	var existence = CheckFileExist($"{bibfileFullPath}")
+	if  existence == 'yes'
+		echom "Specific Note-Bibfile already exists, quiting"
+	endif
+	if existence == 'no'
+		var res = system($"touch {bibfileFullPath}")
+		if res == ''
+			echom $"Specific Note-Bibfile created as: {bibfileFullPath}"
+		endif
+		if res != ''
+			echom $"Bibfile is not created. maybe there is no bibfiles directory under {g:notes_directory}"
+			bibfileFullPath = 'error'
+		endif
+		echom res
+	endif
+	return bibfileFullPath
+enddef
+
+def CreateAndWriteNoteBibFile(file: string)
+	var res = CreateBibFileForNote(file)
+	if res != 'error'
+		EditBibFilePlace(res)
+		echom "Bibfile fullpath is written in note metadata"
+	endif
+	if res == 'error'
+		echom "Bibfile can't be written"
+	endif
+enddef
+		
+
+def GetNoteBibFile(file: string): string
+	var soup = readfile(file)
+	var bibfile = ""
+	bibfile = split(soup[6])[1]
+	return bibfile
+enddef
+
+def OpenNoteBibFile(note: string)
+	var bibfile = GetNoteBibFile(note)
+	if !filereadable(bibfile)
+		echom $"Current bib file for note, {bibfile} is not readable"
+	endif
+
+	if filereadable(bibfile)
+		exe $"new {bibfile}"
+	endif
+enddef
+
+
 
 #def NoteFilename(id: number): string
 #	var file = $"{g:notes_directory}/{id}.md"
@@ -279,13 +371,14 @@ def GetNoteId(file: string): number
 	try
 	id = str2nr(split(soup[1])[1])
 	catch
+		id = 0
 		return 0
 	endtry
 	return id
 enddef
 
 
-def g:IsNote(file: string): number
+def IsNote(file: string): number
 	var id = GetNoteId(file)
 	return id
 enddef
@@ -351,6 +444,8 @@ def BackReferences(id: number, thefile: string): list<string>
 	var referees: list<string>
 	#var files = split(system($"grep -lid skip {id} {g:notes_directory}/*"))
 	var files = split(system($"grep -lid skip {thefile} {g:notes_directory}/*"))
+	# backreferences altındaki isimleri de dahil etmesin diye bu FLN ve
+	# LLN fonksyonlarını kullanıp çile çekiyoruz.
 	for file in files
 		brl = LLN("#BackReferences", file)
 		if brl == -1 
@@ -418,7 +513,8 @@ def OpenNoteBox()
 	execute $"e {g:notes_directory}"
 enddef
 def SingleTermSearch(keyword: string): string
- 		var results = join(systemlist($"grep -lid recurse {keyword} {g:notes_directory}/*.md"), ' ')
+# 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
+ 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
 		if results == ""
 			echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
 			return "nan"
@@ -427,14 +523,15 @@ def SingleTermSearch(keyword: string): string
 enddef
 
 def SingleTermSearchForFiles(keyword: string, files: string): string
-	var searchSentence = $"grep -lid recurse {keyword} {files}"
+	var searchSentence = $"grep -lid recurse '{keyword}' {files}"
 	var results = join(systemlist(searchSentence), ' ')
+#	var results2 = (results, ' ')
 	return results
 enddef
 	
 def NoteSearch(keywords: string): string
 	set efm=%f
-	var Keywords =  split(keywords)
+	var Keywords =  split(keywords, '\;')
 
 	if len(Keywords) == 0
 		echom "No keyword is given"
@@ -446,7 +543,7 @@ def NoteSearch(keywords: string): string
 		if files == "nan"
 			echom "NoteSearch: Exiting Search"
 			return "nan"
-		endif
+	endif
 		cgetexpr split(files)
 		copen
 		return files
@@ -490,6 +587,23 @@ def WordSearch(keyword: string)
 		NoteSearch(keyword)
 enddef
 
+def LoadBibFile(file: string)
+		var isNote = IsNote(expand("%"))
+		if isNote != 0
+			g:bibtexcite_bibfile = GetNoteBibFile(expand("%"))
+			echom $"Loaded bibfile is : {g:bibtexcite_bibfile}" 
+		endif
+		if isNote == 0
+			echom "Can't load bibfile! This is not a standart note!"
+		endif
+enddef
+
+augroup SettingBibFileSpecificToNoteForBibtexcite
+	au!
+	autocmd BufEnter *.md {
+		LoadBibFile(expand("%"))
+	}  
+augroup END
 
 
 command -nargs=* Newnote :call NewNote(<q-args>)
@@ -550,6 +664,18 @@ if !hasmapto('<Plug>Modifydate;')
  	map <unique> <Leader>md <Plug>Modifydate;
 endif
 
+if !hasmapto('<Plug>CreateAndWriteNoteBibFile;')
+ 	map <unique> <Leader>cbf <Plug>Createandwritenotebibfile;
+endif
+
+if !hasmapto('<Plug>OpenNoteBibFile;')
+ 	map <unique> <Leader>obf <Plug>Opennotebibfile;
+endif
+
+if !hasmapto('<Plug>OpenNoteBibFile;')
+ 	map <unique> <Leader>lbf <Plug>Loadbibfile;
+endif
+
 noremap <unique> <script> <Plug>Selectbox; <SID>Selectbox
 noremap <SID>Selectbox :call <SID>ChooseBox()<CR>
 
@@ -584,3 +710,12 @@ noremap <SID>NoteSearchInbox :NoteSearchInbox
 
 noremap <unique> <script> <Plug>Modifydate; <SID>Modifydate
 noremap <SID>Modifydate :call <SID>ModifyDate()<CR>
+
+noremap <unique> <script> <Plug>Createandwritenotebibfile; <SID>Createandwritenotebibfile
+noremap <SID>Createandwritenotebibfile :call <SID>CreateAndWriteNoteBibFile(expand("%"))<CR>
+
+noremap <unique> <script> <Plug>Opennotebibfile; <SID>Opennotebibfile
+noremap <SID>Opennotebibfile :call <SID>OpenNoteBibFile(expand("%"))<CR>
+
+noremap <unique> <script> <Plug>Loadbibfile; <SID>Loadbibfile
+noremap <SID>Loadbibfile :call <SID>LoadBibFile(expand("%"))<CR>
