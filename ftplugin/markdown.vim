@@ -71,11 +71,28 @@ def Convert2Pdf(mdfile: string, pdffile: string): string
 	return "Convertion is not needed"
 enddef
 
+def Convert2Presentation(mdfile: string, pdffile: string): string
+
+	CreatePdfDirectory()
+
+	if IsNewerFile(mdfile, pdffile) == 1
+		var res = system($"pandoc -f markdown -t beamer {mdfile} -V theme:Warsaw -o {pdffile} --template eisvogel --filter pandoc-plot --filter pandoc-crossref --lua-filter $HOME/.bin/links-to-pdf.lua --citeproc")
+		
+		echom "Doing the convertion-Presentation"
+		echom res
+		return res
+	endif
+	#if filereadable(file2)
+	echom "Convertion is not needed"
+	return "Convertion is not needed"
+enddef
+
 def Convert2Doc(mdfile: string, docfile: string): string
 	CreateDocDirectory()
 	if IsNewerFile(mdfile, docfile) == 1
 #		var res = system($"pandoc -f markdown+implicit_figures -t docx {mdfile} -o {docfile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/pandocOrjRef.docx")
-		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
+	#	var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
+		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.odt")
 		echom "Doing the convertion"
 		echom res
 		return res
@@ -94,6 +111,15 @@ def ViewPdf(mdfile: string)
   	var res = system($"zathura {pdffile} & disown")
 enddef
 
+def ViewPresentation(mdfile: string)
+	var trimmedFilename = fnamemodify(mdfile, ":t:r")
+	var pdfFilename = trimmedFilename .. ".pdf"
+	var pdfFullPath = $"{pdfdir}/{pdfFilename}"
+	var pdffile = pdfFullPath
+
+	Convert2Presentation(mdfile, pdffile)
+  	var res = system($"zathura {pdffile} & disown")
+enddef
 
 
 def ViewDoc(mdfile: string)
@@ -166,9 +192,14 @@ enddef
 command -buffer -nargs=0 Viewpdf :call ViewPdf(expand("%"))
 command -buffer -nargs=0 Viewdoc :call ViewDoc(expand("%"))
 command -buffer -nargs=0 Saveas :call SaveAsAndView(expand("%"))
+command -buffer -nargs=0 Viewpresentation :call ViewPresentation(expand("%"))
 
 if !hasmapto('<Plug>Viewpdf;')
 	map <buffer> <unique> <Leader>v <Plug>Viewpdf
+endif
+
+if !hasmapto('<Plug>ViewPresentation;')
+	map <buffer> <unique> <Leader>vp <Plug>Viewpresentation
 endif
 
 if !hasmapto('<Plug>Viewdoc;')
@@ -184,6 +215,7 @@ if !hasmapto('<Plug>Saveas;')
 endif
 
 nnoremap <buffer> <Plug>Viewpdf :call <SID>ViewPdf(expand("%"))<CR>
+nnoremap <buffer> <Plug>Viewpresentation :call <SID>ViewPresentation(expand("%"))<CR>
 nnoremap <buffer> <Plug>Viewdoc :call <SID>ViewDoc(expand("%"))<CR>
 nnoremap <buffer> <Plug>Deletenote :call <SID>DeleteCurrentNote()<CR>
 nnoremap <buffer> <Plug>Saveas :call <SID>SaveAsAndView(expand("%"))<CR>
