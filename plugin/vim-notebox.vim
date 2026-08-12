@@ -522,6 +522,15 @@ def SingleTermSearch(keyword: string): string
 		return results
 enddef
 
+def SingleTermSearchSkipLines(keyword: string): string
+# 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
+ 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
+		if results == ""
+			echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
+			return "nan"
+		endif
+		return results
+enddef
 def SingleTermSearchForFiles(keyword: string, files: string): string
 	var searchSentence = $"grep -lid recurse '{keyword}' {files}"
 	var results = join(systemlist(searchSentence), ' ')
