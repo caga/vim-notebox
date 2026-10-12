@@ -92,7 +92,8 @@ def Convert2Doc(mdfile: string, docfile: string): string
 	if IsNewerFile(mdfile, docfile) == 1
 #		var res = system($"pandoc -f markdown+implicit_figures -t docx {mdfile} -o {docfile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/pandocOrjRef.docx")
 	#	var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
-		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.odt")
+		#var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.docx")
+		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --citeproc --reference-doc={plugindir}/ftplugin/yeni-reference.docx")
 		echom "Doing the convertion"
 		echom res
 		return res
@@ -125,12 +126,15 @@ enddef
 def ViewDoc(mdfile: string)
 	
 	var trimmedFilename = fnamemodify(mdfile, ":t:r")
-#	var docFilename = trimmedFilename .. ".docx"
-	var docFilename = trimmedFilename .. ".odt"
+	var docFilename = trimmedFilename .. ".docx"
+#	var docFilename = trimmedFilename .. ".odt"
 	var docFullPath = $"{docdir}/{docFilename}"
+#	var docFullPathForOnlyOffice = $"{g:notes_directory}/{docFullPath}" 
 	var docfile = docFullPath
+#	var docfile = docFullPathForOnlyOffice
 	Convert2Doc(mdfile, docfile)
- 	var res = system($"libreoffice {docfile} & disown")
+ #	var res = system($"libreoffice {docfile} & disown")
+ 	var res = system($"onlyOffice.AppImage \$PWD/{docfile} & disown")
 enddef
 
 def SaveAsAndView(mdfile: string): string
@@ -152,7 +156,7 @@ def SaveAsAndView(mdfile: string): string
 		var docfile = docFullPath
 		Convert2Doc(mdfile, docfile)
 		echom $"Document is saved as {docfile}"
-		var res = system($"libreoffice {docfile} & disown")
+		var res = system($"onlyOffice.AppImage \$PWD/{docfile} & disown")
 		return $"\nDocument is saved as {docfile}"
 	endif
 	if filetype != 1 && filetype != 2
@@ -179,16 +183,95 @@ def AreYouSure(action: string): number
 	return -2
 enddef
 
+#def DeleteCurrentNote()
+#	var sure = AreYouSure("delete current note")
+#	if sure == 1
+#		delete(expand('%')) | bdelete!
+#		echo " -> Current Note Deleted"
+#	else
+#		echo " -> Note not deleted"
+#	endif
+#enddef
 def DeleteCurrentNote()
-	var sure = AreYouSure("delete current note")
-	if sure == 1
-		delete(expand('%')) | bdelete!
-		echo " -> Current Note Deleted"
-	else
-		echo " -> Note not deleted"
-	endif
+    var sure = AreYouSure("delete current note")
+    if sure != 1
+        echo " -> Note not deleted"
+        return
+    endif
+    
+    var current_file = expand('%')
+    var bib_files_deleted = []
+    var bib_path = ''
+    
+    # Read the first few lines to check for YAML header
+    var lines = readfile(current_file, '', 50)
+    var in_yaml = 0
+    
+    for line in lines
+        if line =~ '^---$'
+            if in_yaml == 0
+                in_yaml = 1
+            else
+                break
+            endif
+        elseif in_yaml == 1
+            # Look for bibliography: or bibfile: field
+            if line =~ '^bibliography:\s*'
+                bib_path = substitute(line, '^bibliography:\s*', '', '')
+                break
+            elseif line =~ '^bibfile:\s*'
+                bib_path = substitute(line, '^bibfile:\s*', '', '')
+                break
+            endif
+        endif
+    endfor
+    
+    # Get file directory and base name once
+    var file_dir = fnamemodify(current_file, ':h')
+    var file_base = fnamemodify(current_file, ':t:r')
+    
+    # If bibliography/bibfile found, construct full path
+    if bib_path != ''
+        # Remove quotes if present
+        bib_path = substitute(bib_path, '^"', '', '')
+        bib_path = substitute(bib_path, '"$', '', '')
+        bib_path = substitute(bib_path, "^'", '', '')
+        bib_path = substitute(bib_path, "'$", '', '')
+        
+        var bib_fullpath = file_dir .. '/' .. bib_path
+        var bib_abs_path = fnamemodify(bib_fullpath, ':p')
+        
+        # Check if BibTeX file exists and delete it
+        if filereadable(bib_abs_path)
+            delete(bib_abs_path)
+            add(bib_files_deleted, bib_abs_path)
+        endif
+    endif
+    
+    # Also check for BibTeX file with same name in bibfiles/ directory
+    var bib_dir = file_dir .. '/bibfiles'
+    var bib_same_name = bib_dir .. '/' .. file_base .. '.bib'
+    var bib_same_name_abs = fnamemodify(bib_same_name, ':p')
+    
+    if filereadable(bib_same_name_abs)
+        delete(bib_same_name_abs)
+        add(bib_files_deleted, bib_same_name_abs)
+    endif
+    
+    # Delete the note
+    delete(current_file)
+    bdelete!
+    echo " -> Current Note Deleted"
+    
+    if !empty(bib_files_deleted)
+        echo " -> BibTeX file(s) deleted:"
+        for bib in bib_files_deleted
+            echo "    - " .. bib
+        endfor
+    else
+        echo " -> No associated BibTeX files found"
+    endif
 enddef
-
 command -buffer -nargs=0 Viewpdf :call ViewPdf(expand("%"))
 command -buffer -nargs=0 Viewdoc :call ViewDoc(expand("%"))
 command -buffer -nargs=0 Saveas :call SaveAsAndView(expand("%"))

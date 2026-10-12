@@ -1,0 +1,724 @@
+{
+ "generated": "2026-10-12T11:58:03",
+ "regions": [
+  "afrika",
+  "avrupa",
+  "avustralya",
+  "dogu-asya",
+  "guney-amerika",
+  "guney-asya",
+  "guney-dogu-asya",
+  "karayipler",
+  "kuzey-amerika",
+  "orta-amerika",
+  "orta-asya",
+  "orta-dogu-ve-korfez"
+ ],
+ "countries": {
+  "angola": {
+   "region": "afrika",
+   "slug": "angola",
+   "display": "Angola"
+  },
+  "benin": {
+   "region": "afrika",
+   "slug": "benin",
+   "display": "Benin"
+  },
+  "botsvana": {
+   "region": "afrika",
+   "slug": "botsvana",
+   "display": "Botsvana"
+  },
+  "burkinafaso": {
+   "region": "afrika",
+   "slug": "burkina-faso",
+   "display": "Burkina Faso"
+  },
+  "burundi": {
+   "region": "afrika",
+   "slug": "burundi",
+   "display": "Burundi"
+  },
+  "cezayir": {
+   "region": "afrika",
+   "slug": "cezayir",
+   "display": "Cezayir"
+  },
+  "cibuti": {
+   "region": "afrika",
+   "slug": "cibuti",
+   "display": "Cibuti"
+  },
+  "cad": {
+   "region": "afrika",
+   "slug": "cad",
+   "display": "Çad"
+  },
+  "ekvatorginesi": {
+   "region": "afrika",
+   "slug": "ekvator-ginesi",
+   "display": "Ekvator Ginesi"
+  },
+  "etiyopya": {
+   "region": "afrika",
+   "slug": "etiyopya",
+   "display": "Etiyopya"
+  },
+  "fildisisahili": {
+   "region": "afrika",
+   "slug": "fildisi-sahili-cumhuriyeti",
+   "display": "Fildişi Sahili"
+  },
+  "fas": {
+   "region": "afrika",
+   "slug": "fas",
+   "display": "Fas"
+  },
+  "gabon": {
+   "region": "afrika",
+   "slug": "gabon",
+   "display": "Gabon"
+  },
+  "gambiya": {
+   "region": "afrika",
+   "slug": "gambiya",
+   "display": "Gambiya"
+  },
+  "gana": {
+   "region": "afrika",
+   "slug": "gana",
+   "display": "Gana"
+  },
+  "gine": {
+   "region": "afrika",
+   "slug": "gine",
+   "display": "Gine"
+  },
+  "ginebissau": {
+   "region": "afrika",
+   "slug": "gine-bissau",
+   "display": "Gine Bissau"
+  },
+  "guneyafrikacumhuriyeti": {
+   "region": "afrika",
+   "slug": "guney-afrika-cumhuriyeti",
+   "display": "Güney Afrika Cumhuriyeti"
+  },
+  "guneysudan": {
+   "region": "afrika",
+   "slug": "guney-sudan",
+   "display": "Güney Sudan"
+  },
+  "kamerun": {
+   "region": "afrika",
+   "slug": "kamerun",
+   "display": "Kamerun"
+  },
+  "kongo": {
+   "region": "afrika",
+   "slug": "kongo",
+   "display": "Kongo"
+  },
+  "kongodemokratikcumhuriyeti": {
+   "region": "afrika",
+   "slug": "demokratik-kongo",
+   "display": "Kongo Demokratik Cumhuriyeti"
+  },
+  "liberya": {
+   "region": "afrika",
+   "slug": "liberya",
+   "display": "Liberya"
+  },
+  "libya": {
+   "region": "afrika",
+   "slug": "libya",
+   "display": "Libya"
+  },
+  "madagaskar": {
+   "region": "afrika",
+   "slug": "madagaskar",
+   "display": "Madagaskar"
+  },
+  "mali": {
+   "region": "afrika",
+   "slug": "mali",
+   "display": "Mali"
+  },
+  "morityus": {
+   "region": "afrika",
+   "slug": "morityus",
+   "display": "Morityus"
+  },
+  "misir": {
+   "region": "afrika",
+   "slug": "misir",
+   "display": "Mısır"
+  },
+  "moritanya": {
+   "region": "afrika",
+   "slug": "moritanya",
+   "display": "Moritanya"
+  },
+  "mozambik": {
+   "region": "afrika",
+   "slug": "mozambik",
+   "display": "Mozambik"
+  },
+  "namibya": {
+   "region": "afrika",
+   "slug": "namibya",
+   "display": "Namibya"
+  },
+  "nijer": {
+   "region": "afrika",
+   "slug": "nijer",
+   "display": "Nijer"
+  },
+  "nijerya": {
+   "region": "afrika",
+   "slug": "nijerya",
+   "display": "Nijerya"
+  },
+  "ruanda": {
+   "region": "afrika",
+   "slug": "ruanda",
+   "display": "Ruanda"
+  },
+  "senegal": {
+   "region": "afrika",
+   "slug": "senegal",
+   "display": "Senegal"
+  },
+  "seyseller": {
+   "region": "afrika",
+   "slug": "seyseller",
+   "display": "Seyşeller"
+  },
+  "sierraleone": {
+   "region": "afrika",
+   "slug": "sierra-leone",
+   "display": "Sierra Leone"
+  },
+  "somali": {
+   "region": "afrika",
+   "slug": "somali",
+   "display": "Somali"
+  },
+  "sudan": {
+   "region": "afrika",
+   "slug": "sudan",
+   "display": "Sudan"
+  },
+  "tanzanya": {
+   "region": "afrika",
+   "slug": "tanzanya",
+   "display": "Tanzanya"
+  },
+  "togo": {
+   "region": "afrika",
+   "slug": "togo",
+   "display": "Togo"
+  },
+  "tunus": {
+   "region": "afrika",
+   "slug": "tunus",
+   "display": "Tunus"
+  },
+  "uganda": {
+   "region": "afrika",
+   "slug": "uganda",
+   "display": "Uganda"
+  },
+  "zambiya": {
+   "region": "afrika",
+   "slug": "zambiya",
+   "display": "Zambiya"
+  },
+  "zimbabve": {
+   "region": "afrika",
+   "slug": "zimbabve",
+   "display": "Zimbabve"
+  },
+  "almanya": {
+   "region": "avrupa",
+   "slug": "almanya",
+   "display": "Almanya"
+  },
+  "arnavutluk": {
+   "region": "avrupa",
+   "slug": "arnavutluk",
+   "display": "Arnavutluk"
+  },
+  "avusturya": {
+   "region": "avrupa",
+   "slug": "avusturya",
+   "display": "Avusturya"
+  },
+  "belcika": {
+   "region": "avrupa",
+   "slug": "belcika",
+   "display": "Belçika"
+  },
+  "belarus": {
+   "region": "avrupa",
+   "slug": "belarus",
+   "display": "Belarus"
+  },
+  "birlesikkrallik": {
+   "region": "avrupa",
+   "slug": "birlesik-krallik",
+   "display": "Birleşik Krallık"
+  },
+  "bosnahersek": {
+   "region": "avrupa",
+   "slug": "bosna-hersek",
+   "display": "Bosna Hersek"
+  },
+  "bulgaristan": {
+   "region": "avrupa",
+   "slug": "bulgaristan",
+   "display": "Bulgaristan"
+  },
+  "cekya": {
+   "region": "avrupa",
+   "slug": "cekya",
+   "display": "Çekya"
+  },
+  "danimarka": {
+   "region": "avrupa",
+   "slug": "danimarka",
+   "display": "Danimarka"
+  },
+  "estonya": {
+   "region": "avrupa",
+   "slug": "estonya",
+   "display": "Estonya"
+  },
+  "faroeadalari": {
+   "region": "avrupa",
+   "slug": "faroe-adalari",
+   "display": "Faroe Adaları"
+  },
+  "finlandiya": {
+   "region": "avrupa",
+   "slug": "finlandiya",
+   "display": "Finlandiya"
+  },
+  "fransa": {
+   "region": "avrupa",
+   "slug": "fransa",
+   "display": "Fransa"
+  },
+  "hirvatistan": {
+   "region": "avrupa",
+   "slug": "hirvatistan",
+   "display": "Hırvatistan"
+  },
+  "hollanda": {
+   "region": "avrupa",
+   "slug": "hollanda",
+   "display": "Hollanda"
+  },
+  "irlanda": {
+   "region": "avrupa",
+   "slug": "irlanda",
+   "display": "İrlanda"
+  },
+  "ispanya": {
+   "region": "avrupa",
+   "slug": "ispanya",
+   "display": "İspanya"
+  },
+  "isvec": {
+   "region": "avrupa",
+   "slug": "isvec",
+   "display": "İsveç"
+  },
+  "isvicre": {
+   "region": "avrupa",
+   "slug": "isvicre",
+   "display": "İsviçre"
+  },
+  "italya": {
+   "region": "avrupa",
+   "slug": "italya",
+   "display": "İtalya"
+  },
+  "izlanda": {
+   "region": "avrupa",
+   "slug": "izlanda",
+   "display": "İzlanda"
+  },
+  "kosova": {
+   "region": "avrupa",
+   "slug": "kosova",
+   "display": "Kosova"
+  },
+  "kuzeymakedonya": {
+   "region": "avrupa",
+   "slug": "kuzey-makedonya",
+   "display": "Kuzey Makedonya"
+  },
+  "letonya": {
+   "region": "avrupa",
+   "slug": "letonya",
+   "display": "Letonya"
+  },
+  "lihtenstayn": {
+   "region": "avrupa",
+   "slug": "lihtenstayn",
+   "display": "Lihtenştayn"
+  },
+  "litvanya": {
+   "region": "avrupa",
+   "slug": "litvanya",
+   "display": "Litvanya"
+  },
+  "luksemburg": {
+   "region": "avrupa",
+   "slug": "luksemburg",
+   "display": "Lüksemburg"
+  },
+  "macaristan": {
+   "region": "avrupa",
+   "slug": "macaristan",
+   "display": "Macaristan"
+  },
+  "malta": {
+   "region": "avrupa",
+   "slug": "malta",
+   "display": "Malta"
+  },
+  "moldova": {
+   "region": "avrupa",
+   "slug": "moldova",
+   "display": "Moldova"
+  },
+  "norvec": {
+   "region": "avrupa",
+   "slug": "norvec",
+   "display": "Norveç"
+  },
+  "polonya": {
+   "region": "avrupa",
+   "slug": "polonya",
+   "display": "Polonya"
+  },
+  "portekiz": {
+   "region": "avrupa",
+   "slug": "portekiz",
+   "display": "Portekiz"
+  },
+  "romanya": {
+   "region": "avrupa",
+   "slug": "romanya",
+   "display": "Romanya"
+  },
+  "rusya": {
+   "region": "avrupa",
+   "slug": "rusya-federasyonu",
+   "display": "Rusya"
+  },
+  "slovakya": {
+   "region": "avrupa",
+   "slug": "slovakya",
+   "display": "Slovakya"
+  },
+  "slovenya": {
+   "region": "avrupa",
+   "slug": "slovenya",
+   "display": "Slovenya"
+  },
+  "ukrayna": {
+   "region": "avrupa",
+   "slug": "ukrayna",
+   "display": "Ukrayna"
+  },
+  "yunanistan": {
+   "region": "avrupa",
+   "slug": "yunanistan",
+   "display": "Yunanistan"
+  },
+  "yenizelanda": {
+   "region": "avustralya",
+   "slug": "yeni-zelanda",
+   "display": "Yeni Zelanda"
+  },
+  "cinhalkcumhuriyeti": {
+   "region": "dogu-asya",
+   "slug": "cin-halk-cumhuriyeti",
+   "display": "Çin Halk Cumhuriyeti"
+  },
+  "guneykorecumhuriyeti": {
+   "region": "dogu-asya",
+   "slug": "guney-kore-cumhuriyeti",
+   "display": "Güney Kore Cumhuriyeti"
+  },
+  "japonya": {
+   "region": "dogu-asya",
+   "slug": "japonya",
+   "display": "Japonya"
+  },
+  "mogolistan": {
+   "region": "dogu-asya",
+   "slug": "mogolistan",
+   "display": "Moğolistan"
+  },
+  "tayvan": {
+   "region": "dogu-asya",
+   "slug": "tayvan",
+   "display": "Tayvan"
+  },
+  "arjantin": {
+   "region": "guney-amerika",
+   "slug": "arjantin",
+   "display": "Arjantin"
+  },
+  "brezilya": {
+   "region": "guney-amerika",
+   "slug": "brezilya",
+   "display": "Brezilya"
+  },
+  "bolivya": {
+   "region": "guney-amerika",
+   "slug": "bolivya",
+   "display": "Bolivya"
+  },
+  "ekvator": {
+   "region": "guney-amerika",
+   "slug": "ekvator",
+   "display": "Ekvator"
+  },
+  "guyana": {
+   "region": "guney-amerika",
+   "slug": "guyana",
+   "display": "Guyana"
+  },
+  "kolombiya": {
+   "region": "guney-amerika",
+   "slug": "kolombiya",
+   "display": "Kolombiya"
+  },
+  "paraguay": {
+   "region": "guney-amerika",
+   "slug": "paraguay",
+   "display": "Paraguay"
+  },
+  "peru": {
+   "region": "guney-amerika",
+   "slug": "peru",
+   "display": "Peru"
+  },
+  "sili": {
+   "region": "guney-amerika",
+   "slug": "sili",
+   "display": "Şili"
+  },
+  "uruguay": {
+   "region": "guney-amerika",
+   "slug": "uruguay",
+   "display": "Uruguay"
+  },
+  "venezuela": {
+   "region": "guney-amerika",
+   "slug": "venezuela",
+   "display": "Venezuela"
+  },
+  "afganistan": {
+   "region": "guney-asya",
+   "slug": "afganistan",
+   "display": "Afganistan"
+  },
+  "banglades": {
+   "region": "guney-asya",
+   "slug": "banglades",
+   "display": "Bangladeş"
+  },
+  "hindistan": {
+   "region": "guney-asya",
+   "slug": "hindistan",
+   "display": "Hindistan"
+  },
+  "iran": {
+   "region": "guney-asya",
+   "slug": "iran",
+   "display": "İran"
+  },
+  "pakistan": {
+   "region": "guney-asya",
+   "slug": "pakistan",
+   "display": "Pakistan"
+  },
+  "endonezya": {
+   "region": "guney-dogu-asya",
+   "slug": "endonezya",
+   "display": "Endonezya"
+  },
+  "filipinler": {
+   "region": "guney-dogu-asya",
+   "slug": "filipinler",
+   "display": "Filipinler"
+  },
+  "kambocya": {
+   "region": "guney-dogu-asya",
+   "slug": "kambocya",
+   "display": "Kamboçya"
+  },
+  "malezya": {
+   "region": "guney-dogu-asya",
+   "slug": "malezya",
+   "display": "Malezya"
+  },
+  "singapur": {
+   "region": "guney-dogu-asya",
+   "slug": "singapur",
+   "display": "Singapur"
+  },
+  "tayland": {
+   "region": "guney-dogu-asya",
+   "slug": "tayland",
+   "display": "Tayland"
+  },
+  "vietnam": {
+   "region": "guney-dogu-asya",
+   "slug": "vietnam",
+   "display": "Vietnam"
+  },
+  "antiguavebarbuda": {
+   "region": "karayipler",
+   "slug": "antigua-ve-barbuda",
+   "display": "Antigua ve Barbuda"
+  },
+  "dominikcumhuriyeti": {
+   "region": "karayipler",
+   "slug": "dominik-cumhuriyeti",
+   "display": "Dominik Cumhuriyeti"
+  },
+  "kuba": {
+   "region": "karayipler",
+   "slug": "kuba",
+   "display": "Küba"
+  },
+  "abd": {
+   "region": "kuzey-amerika",
+   "slug": "abd",
+   "display": "ABD"
+  },
+  "kanada": {
+   "region": "kuzey-amerika",
+   "slug": "kanada",
+   "display": "Kanada"
+  },
+  "meksika": {
+   "region": "orta-amerika",
+   "slug": "meksika",
+   "display": "Meksika"
+  },
+  "panama": {
+   "region": "orta-amerika",
+   "slug": "panama",
+   "display": "Panama"
+  },
+  "azerbaycan": {
+   "region": "orta-asya",
+   "slug": "azerbaycan",
+   "display": "Azerbaycan"
+  },
+  "gurcistan": {
+   "region": "orta-asya",
+   "slug": "gurcistan",
+   "display": "Gürcistan"
+  },
+  "kazakistan": {
+   "region": "orta-asya",
+   "slug": "kazakistan",
+   "display": "Kazakistan"
+  },
+  "kirgizistan": {
+   "region": "orta-asya",
+   "slug": "kirgizistan",
+   "display": "Kırgızistan"
+  },
+  "ozbekistan": {
+   "region": "orta-asya",
+   "slug": "ozbekistan",
+   "display": "Özbekistan"
+  },
+  "tacikistan": {
+   "region": "orta-asya",
+   "slug": "tacikistan",
+   "display": "Tacikistan"
+  },
+  "turkmenistan": {
+   "region": "orta-asya",
+   "slug": "turkmenistan",
+   "display": "Türkmenistan"
+  },
+  "bahreyn": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "bahreyn",
+   "display": "Bahreyn"
+  },
+  "birlesikarapemirlikleri": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "bae",
+   "display": "Birleşik Arap Emirlikleri"
+  },
+  "filistin": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "filistin",
+   "display": "Filistin"
+  },
+  "irak": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "irak",
+   "display": "Irak"
+  },
+  "israil": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "israil",
+   "display": "İsrail"
+  },
+  "katar": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "katar",
+   "display": "Katar"
+  },
+  "kuveyt": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "kuveyt",
+   "display": "Kuveyt"
+  },
+  "lubnan": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "lubnan",
+   "display": "Lübnan"
+  },
+  "suriye": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "suriye",
+   "display": "Suriye"
+  },
+  "suudiarabistan": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "suudi-arabistan",
+   "display": "Suudi Arabistan"
+  },
+  "umman": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "umman",
+   "display": "Umman"
+  },
+  "urdun": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "urdun",
+   "display": "Ürdün"
+  },
+  "yemen": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "yemen",
+   "display": "Yemen"
+  }
+ }
+}

@@ -215,10 +215,17 @@ def CreateAndWriteNoteBibFile(file: string)
 enddef
 		
 
+
+
+#def GetNoteBibFile(file: string): string
+#	var soup = readfile(file)
+#	var bibfile = ""
+#	bibfile = split(soup[6])[1]
+#	return bibfile
+#enddef
+
 def GetNoteBibFile(file: string): string
-	var soup = readfile(file)
-	var bibfile = ""
-	bibfile = split(soup[6])[1]
+	var bibfile = GetYamlField(file, 'bibliography')
 	return bibfile
 enddef
 
@@ -365,17 +372,62 @@ enddef
 # 	endif
 # enddef
 
-def GetNoteId(file: string): number
-	var soup = readfile(file)
-	var id = 0
-	try
-	id = str2nr(split(soup[1])[1])
-	catch
-		id = 0
-		return 0
-	endtry
-	return id
+# Simple function to get YAML field from a file
+def GetYamlField(file: string, field: string): string
+    # Read the file
+    var lines = readfile(file)
+    
+    # Check if it has a YAML header
+    if len(lines) == 0 || lines[0] !~ '^---$'
+        return ''
+    endif
+    
+    # Find the end of header
+    var end_line = 0
+    for i in range(1, len(lines) - 1)
+        if lines[i] =~ '^---$'
+            end_line = i
+            break
+        endif
+    endfor
+    
+    if end_line == 0
+        return ''
+    endif
+    
+    # Search for the field between line 1 and end_line-1
+    var pattern = '^' .. field .. '\s*:\s*'
+    for i in range(1, end_line - 1)
+        if lines[i] =~ pattern
+            var value = matchstr(lines[i], pattern .. '\zs.*')
+            value = trim(value)
+            # Remove quotes if present
+            value = substitute(value, '^"\(.*\)"$', '\1', '')
+            value = substitute(value, "^'\(.*\)'$", '\1', '')
+            return value
+        endif
+    endfor
+    
+    return ''
 enddef
+
+def GetNoteId(file: string): number
+	var id = GetYamlField(file, 'id')
+	var nid = str2nr(id)
+	return nid
+enddef
+
+#def GetNoteId(file: string): number
+#	var soup = readfile(file)
+#	var id = 0
+#	try
+#	id = str2nr(split(soup[1])[1])
+#	catch
+#		id = 0
+#		return 0
+#	endtry
+#	return id
+#enddef
 
 
 def IsNote(file: string): number
@@ -383,9 +435,14 @@ def IsNote(file: string): number
 	return id
 enddef
 
+#def GetNoteExplanation(file: string): string
+#	var soup = readfile(file)
+#	var exp = join(split(soup[4])[1 : ])
+#	return exp
+#enddef
+
 def GetNoteExplanation(file: string): string
-	var soup = readfile(file)
-	var exp = join(split(soup[4])[1 : ])
+	var exp = GetYamlField(file, 'title')
 	return exp
 enddef
 
@@ -446,6 +503,7 @@ def BackReferences(id: number, thefile: string): list<string>
 	var files = split(system($"grep -lid skip {thefile} {g:notes_directory}/*"))
 	# backreferences altındaki isimleri de dahil etmesin diye bu FLN ve
 	# LLN fonksyonlarını kullanıp çile çekiyoruz.
+	var filename: string # bu da yeni
 	for file in files
 		brl = LLN("#BackReferences", file)
 		if brl == -1 
@@ -454,37 +512,120 @@ def BackReferences(id: number, thefile: string): list<string>
 		#rfl = FLN($"{id}", file)
 		rfl = FLN(thefile, file)
 		if GetNoteId(file) != id && GetNoteId(file) > 0 && (rfl > 0) && (rfl < brl) 
-			add(referees, file)
+			filename = fnamemodify(file, ':t') #yeni satır
+			add(referees, filename) # buda yeni
+			#add(referees, file)
 		endif
 	endfor
 	return sort(referees)
 enddef
 
-def OrphanNotes(): list<string>
-	var files = split(system($"grep -lid skip id: {g:notes_directory}/* | xargs -L 1 basename"))
-	var orphans = []
-	for file in files
-		var id = GetNoteId(file)
-		var referees = BackReferences(id, file)
-		if id > 0 && referees == []
-			add(orphans, file)
+def ParseYamlField(lines: list<string>, field: string): string
+	if len(lines) == 0 || lines[0] !~ '^---$'
+		return ''
+	endif
+	var end_line = 0
+	for i in range(1, len(lines) - 1)
+		if lines[i] =~ '^---$'
+			end_line = i
+			break
 		endif
 	endfor
-	# var dummy = sort(orphans)
-	# echom dummy
+	if end_line == 0
+		return ''
+	endif
+	var pattern = '^' .. field .. '\s*:\s*'
+	for i in range(1, end_line - 1)
+		if lines[i] =~ pattern
+			var value = matchstr(lines[i], pattern .. '\zs.*')
+			value = trim(value)
+			value = substitute(value, '^"\(.*\)"$', '\1', '')
+			value = substitute(value, "^'\(.*\)'$", '\1', '')
+			return value
+		endif
+	endfor
+	return ''
+enddef
+
+# Tek geçişte, tüm notları belleğe okuyup geri referansları hesaplar.
+# Eski sürüm her not için ayrı ayrı grep/readfile çalıştırıyordu (O(N^2)).
+def OrphanNotes(): list<string>
+	var dir = expand(g:notes_directory)
+	var paths = filter(glob(dir .. '/*', true, true), (_, p) => filereadable(p))
+	var data: dict<list<string>> = {}
+	var ids: dict<number> = {}
+	for p in paths
+		var lines = readfile(p)
+		var name = fnamemodify(p, ':t')
+		data[name] = lines
+		ids[name] = str2nr(ParseYamlField(lines, 'id'))
+	endfor
+
+	var name_set: dict<bool> = {}
+	var refs: dict<number> = {}
+	for name in keys(data)
+		refs[name] = 0
+		if ids[name] > 0
+			name_set[name] = true
+		endif
+	endfor
+
+	for b in keys(data)
+		if ids[b] <= 0
+			continue
+		endif
+		var lines = data[b]
+		var hdr = -1
+		for i in range(len(lines) - 1, 0, -1)
+			if lines[i] =~ '#BackReferences'
+				hdr = i
+				break
+			endif
+		endfor
+		var last = hdr < 0 ? len(lines) : hdr
+		var seen: dict<bool> = {}
+		for i in range(0, last - 1)
+			var pos = 0
+			while true
+				var m = matchstrpos(lines[i], '\f\+', pos)
+				if m[1] < 0
+					break
+				endif
+				pos = m[2]
+				var refname = m[0]
+				if refname != b && has_key(name_set, refname)
+					seen[refname] = true
+				endif
+			endwhile
+		endfor
+		for r in keys(seen)
+			refs[r] = refs[r] + 1
+		endfor
+	endfor
+
+	var orphans: list<string> = []
+	for name in keys(data)
+		if ids[name] > 0 && refs[name] == 0
+			orphans->add(name)
+		endif
+	endfor
 	return sort(orphans)
 enddef
 
 def WriteOrphanNotes()
-	exe $"new {g:notes_directory}/OrphanNotes.md"
-	exe $"normal! ggvG$dd"
 	var orphans = OrphanNotes()
-	execute "normal! oOrphanNotes:"
+	# Satırları bellekte kurup tampona tek seferde yazıyoruz. Eski sürüm
+	# her satır için ayrı bir normal! komutu çalıştırdığı için yavaştı.
+	var lines: list<string> = ['', 'OrphanNotes:']
 	var i = 0
 	for orphan in orphans
 		i = i + 1
-		execute $"normal! o{i}- {CreateNoteLink(orphan)}\<esc>o"
+		lines->add($"{i}- " .. CreateNoteLink(orphan))
+		lines->add('')
 	endfor
+	exe $"new {g:notes_directory}/OrphanNotes.md"
+	silent! deletebufline(bufnr(), 1, '$')
+	silent noautocmd setline(1, lines)
 enddef
 def g:Deneme()
 	echom "Merhaba"
@@ -512,76 +653,97 @@ enddef
 def OpenNoteBox()
 	execute $"e {g:notes_directory}"
 enddef
-def SingleTermSearch(keyword: string): string
-# 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
- 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
-		if results == ""
-			echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
-			return "nan"
-		endif
-		return results
+
+def GetNoteTitle(file: string): string
+    var title = GetYamlField(file, 'title')
+    if title == ''
+        title = fnamemodify(file, ':t:r')
+    endif
+    return title
 enddef
 
-def SingleTermSearchSkipLines(keyword: string): string
-# 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
- 		var results = join(systemlist($"grep -lid recurse '{keyword}' {g:notes_directory}/*.md"), ' ')
-		if results == ""
-			echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
-			return "nan"
-		endif
-		return results
+def SingleTermSearch(keyword: string): list<string>
+    var results = systemlist($"grep -l '{keyword}' {g:notes_directory}/*.md")
+    if empty(results)
+        echom $"SingleTermSearch: keyword: '{keyword}' returns no result"
+        return []
+    endif
+    return results
 enddef
-def SingleTermSearchForFiles(keyword: string, files: string): string
-	var searchSentence = $"grep -lid recurse '{keyword}' {files}"
-	var results = join(systemlist(searchSentence), ' ')
-#	var results2 = (results, ' ')
-	return results
+
+def SingleTermSearchForFiles(keyword: string, files: string): list<string>
+    if files == ""
+        return []
+    endif
+    var searchSentence = $"grep -l '{keyword}' {files}"
+    var results = systemlist(searchSentence)
+    return results
 enddef
-	
-def NoteSearch(keywords: string): string
-	set efm=%f
-	var Keywords =  split(keywords, '\;')
 
-	if len(Keywords) == 0
-		echom "No keyword is given"
-		return "No keyword"
-	endif
+def NoteSearch(keywords: string)
+    set efm=%f
+    setqflist([])
+    var Keywords = split(keywords, '\;')
 
-	if len(Keywords) == 1 
-		var files = SingleTermSearch(Keywords[0])
-		if files == "nan"
-			echom "NoteSearch: Exiting Search"
-			return "nan"
-	endif
-		cgetexpr split(files)
-		copen
-		return files
-	endif
+    if len(Keywords) == 0
+        echom "No keyword is given"
+        return
+    endif
 
-	var files = ""
-	var i = 0
-
-	for keyword in Keywords
-		if i == 0
-			files = SingleTermSearch(keyword)
-			i = i + 1
-			if files == "nan"
-				echom "NoteSearch: First Keyword Returns No Results. Exiting Search"
-				return "nan"
-			endif
-			continue
-		endif
-		files = SingleTermSearchForFiles(keyword, files)
-		i = i + 1
-	endfor
-	  	if empty(files)
-	  		echo "NoteSearch: There is no search result"
-			cexpr []
-	  	else
-	  	cgetexpr split(files)
-	  	copen
-	  	endif
-		return files
+    var result_files: list<string> = []
+    
+    if len(Keywords) == 1 
+        result_files = SingleTermSearch(Keywords[0])
+        if empty(result_files)
+            echom "NoteSearch: Exiting Search"
+            return
+        endif
+    else
+        var files = ""
+        var i = 0
+        for keyword in Keywords
+            if i == 0
+                var first_result = SingleTermSearch(keyword)
+                if empty(first_result)
+                    echom "NoteSearch: First Keyword Returns No Results. Exiting Search"
+                    return
+                endif
+                files = join(first_result, ' ')
+                i = i + 1
+                continue
+            endif
+            var next_result = SingleTermSearchForFiles(keyword, files)
+            if empty(next_result)
+                echom "NoteSearch: No results for keyword: " .. keyword
+                return
+            endif
+            files = join(next_result, ' ')
+            i = i + 1
+        endfor
+        if files != ""
+            result_files = split(files)
+        endif
+    endif
+    
+    if empty(result_files)
+        echo "NoteSearch: There is no search result"
+        setqflist([])
+    else
+        var qf_list: list<dict<any>> = []
+        for file in result_files
+            var title = GetNoteTitle(file)
+            var dict = {
+                filename: file,
+                text: title,
+                lnr: 1,
+                col: 1,
+                module: fnamemodify(file, ':t')
+            }
+            add(qf_list, dict)
+        endfor
+        setqflist(qf_list)
+        copen
+    endif
 enddef
 
 def NoteSearchInBox(keywords: string)
@@ -593,18 +755,18 @@ enddef
 
 
 def WordSearch(keyword: string)
-		NoteSearch(keyword)
+	NoteSearch(keyword)
 enddef
 
 def LoadBibFile(file: string)
-		var isNote = IsNote(expand("%"))
-		if isNote != 0
-			g:bibtexcite_bibfile = GetNoteBibFile(expand("%"))
-			echom $"Loaded bibfile is : {g:bibtexcite_bibfile}" 
-		endif
-		if isNote == 0
-			echom "Can't load bibfile! This is not a standart note!"
-		endif
+	var isNote = IsNote(expand("%"))
+	if isNote != 0
+		g:bibtexcite_bibfile = GetNoteBibFile(expand("%"))
+		echom $"Loaded bibfile is : {g:bibtexcite_bibfile}" 
+	endif
+	if isNote == 0
+		echom "Can't load bibfile! This is not a standart note!"
+	endif
 enddef
 
 augroup SettingBibFileSpecificToNoteForBibtexcite

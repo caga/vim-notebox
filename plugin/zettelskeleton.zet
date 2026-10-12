@@ -1,19 +1,21 @@
 ---
 id: 
-date:
 author:
 title: 
-n_type: floating
+date:
+modify:
+country:
+institude: 
+n_type: 
+keywords:
 bibliography: notes.bib
 citation-style: csl/advanced-robotics.csl
-colorlinks: true
-keywords:
-modify:
 toc-title: "İçindekiler"
 tableTitle: "Tablo"
 lotTitle: "Tablolar"
 reference-section-title: "Kaynakça"
 figureTitle: "Şekil"
+colorlinks: true
 ---
 
 
