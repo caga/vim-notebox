@@ -20,8 +20,8 @@ import notebox as nb
 
 indicatorCodesWB = {
         'Nüfus': 'SP.POP.TOTL',
-        'GSYH ($)': 'NY.GDP.MKTP.CD',
-        'GSYH (Kişi Başı $)': 'NY.GDP.PCAP.CD',
+        'GSYH (\$)': 'NY.GDP.MKTP.CD',
+        'GSYH (Kişi Başı \$)': 'NY.GDP.PCAP.CD',
         'GSYH % Büyüme': 'NY.GDP.MKTP.KD.ZG',
         'GSYH % Sanayi Payı': 'NV.IND.TOTL.ZS',
         'GSYH % Hizmet Payı': 'NV.SRV.TOTL.ZS',
@@ -29,8 +29,8 @@ indicatorCodesWB = {
         'Enflasyon %': 'FP.CPI.TOTL.ZG',
         'İşsizlik %': 'SL.UEM.TOTL.ZS',
         'İhracatda Yük. Tek. Payı %': 'TX.VAL.TECH.MF.ZS',
-        'İhracat ($)': 'BX.GSR.MRCH.CD',
-        'İthalat ($)': 'BM.GSR.MRCH.CD',
+        'İhracat (\$)': 'BX.GSR.MRCH.CD',
+        'İthalat (\$)': 'BM.GSR.MRCH.CD',
         'Arge/GSYH % Oranı': 'GB.XPD.RSDV.GD.ZS',
 }
 
@@ -122,8 +122,17 @@ def build_body(countryName, gdata, data):
 
 
 def main():
-    arg = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "TUR"
+    flags, positional = set(), []
+    for a in sys.argv[1:]:
+        if a.startswith("--"):
+            flags.add(a)
+        else:
+            positional.append(a)
+    arg = " ".join(positional) if positional else "TUR"
     iso3, display, country_field = nb.resolve_country(arg)
+    if "--delete" in flags:
+        return nb.delete_country_type(iso3, "obn indicatorReport", "gosterge",
+                                      country_field, display)
     api_country = iso3 if iso3 else country_field.upper()
     print(f"Ülke: {display}" + (f" ({iso3})" if iso3 else ""))
 
@@ -137,7 +146,7 @@ def main():
         source_url = f"https://data.worldbank.org/country/{iso3 or country_field}"
         used = set()
         existing_ids = set()
-        nb.emit_note(display, iso3, title, "indicatorReport", body, source_url,
+        nb.emit_note(display, iso3, title, "obn indicatorReport", body, source_url,
                      country_field, used, existing_ids,
                      bib_author="Dünya Bankası",
                      bib_howpublished="World Bank Open Data")

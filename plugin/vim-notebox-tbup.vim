@@ -89,19 +89,77 @@ def ExitCb(_j: job, status: number)
 enddef
 
 
+def ParseReport(out: list<string>): dict<any>
+	var res = {exists: '', fresh: 0, text: ''}
+	for line in out
+		if line =~ '^REPORT_EXISTS: '
+			res.exists = substitute(line, '^REPORT_EXISTS: ', '', '')
+		elseif line =~ '^REPORT_FRESH: '
+			res.fresh = str2nr(substitute(line, '^REPORT_FRESH: ', '', ''))
+		elseif line =~ '^REPORT_AGE_TEXT: '
+			res.text = substitute(line, '^REPORT_AGE_TEXT: ', '', '')
+		endif
+	endfor
+	return res
+enddef
+
+
+def GateTbup(box: string, name: string): dict<any>
+	# {run: bool, target: path}
+	if get(g:, 'tbup_report_check', 1) == 0
+		return {run: true, target: ''}
+	endif
+	var cmd = 'cd ' .. shellescape(box)
+		.. ' && ' .. shellescape(expand(g:tbup_python))
+		.. ' ' .. shellescape(expand(g:tbup_script))
+		.. ' ' .. shellescape(name) .. ' --check'
+	var r = ParseReport(systemlist(cmd))
+	if r.exists == ''
+		return {run: true, target: ''}
+	endif
+	if r.fresh == 1
+		echom 'tbup atlandı: ' .. r.text .. ' ('
+			.. get(g:, 'tbup_report_max_age_days', 30) .. ' günden yeni)'
+		return {run: false, target: r.exists}
+	endif
+	if get(g:, 'tbup_report_ask', 1) != 0
+		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+			"&Evet\n&Hayır", 2) != 1
+			echom 'tbup atlandı: ' .. r.text
+			return {run: false, target: r.exists}
+		endif
+	endif
+	return {run: true, target: ''}
+enddef
+
+
+def OpenTarget(target: string)
+	checktime
+	if target != '' && filereadable(target)
+		execute 'edit ' .. fnameescape(target)
+	endif
+enddef
+
+
 def SetEnv(box: string)
 	$NOTES_DIR = box
 	$NOTES_BIB_DIR = box .. '/bibfiles'
 	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
 	$TBUP_PDF_DIR = get(g:, 'tbup_pdfdir', box .. '/tbupPdfs')
+	$NOTES_TBUP_REPORT_MAX_AGE_DAYS = string(get(g:, 'tbup_report_max_age_days', 30))
 enddef
 
 
 def SyncRun(box: string, name: string)
+	var gate = GateTbup(box, name)
+	if !gate.run
+		OpenTarget(gate.target)
+		return
+	endif
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(expand(g:tbup_python))
 		.. ' ' .. shellescape(expand(g:tbup_script))
-		.. ' --yes ' .. shellescape(name)
+		.. ' --yes --force ' .. shellescape(name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -110,10 +168,7 @@ def SyncRun(box: string, name: string)
 			target = substitute(line, '^INDEX: ', '', '')
 		endif
 	endfor
-	checktime
-	if target != '' && filereadable(target)
-		execute 'edit ' .. fnameescape(target)
-	endif
+	OpenTarget(target)
 enddef
 
 
@@ -146,6 +201,12 @@ def g:TbupFetch(country: string)
 		return
 	endif
 
+	var gate = GateTbup(box, name)
+	if !gate.run
+		OpenTarget(gate.target)
+		return
+	endif
+
 	s_lines = []
 	s_partial = ''
 	s_orig_win = win_getid()
@@ -159,15 +220,52 @@ def g:TbupFetch(country: string)
 	echom 'Tbupfetch başladı (arka planda)...'
 
 	var cmd: list<string> = [expand(g:tbup_python), expand(g:tbup_script),
-		'--yes', name]
+		'--yes', '--force', name]
 	job_start(cmd, {out_cb: OutCb, err_cb: OutCb, exit_cb: ExitCb, cwd: box,
 		mode: 'raw'})
 enddef
 
 
+def g:TbupDelete(country: string)
+	var name = country
+	if name == ''
+		name = input('Ülke (iso3/ad): ')
+	endif
+	if name == ''
+		return
+	endif
+	if !exists('g:notes_directory') || g:notes_directory == ''
+		g:notes_directory = '~/notes'
+	endif
+	var box = expand(g:notes_directory)
+	if box == ''
+		box = expand('~/notes')
+	endif
+	SetEnv(box)
+	if confirm(name .. ' için oluşturulan Ticaret Bakanlığı ülke profil notları silinsin mi?(E/H)',
+		"&Evet\n&Hayır", 2) != 1
+		echom 'Silme iptal edildi'
+		return
+	endif
+	var cmd = 'cd ' .. shellescape(box)
+		.. ' && ' .. shellescape(expand(g:tbup_python))
+		.. ' ' .. shellescape(expand(g:tbup_script))
+		.. ' ' .. shellescape(name) .. ' --delete'
+	var out = systemlist(cmd)
+	echom join(out, "\n")
+	checktime
+enddef
+
+
 command -nargs=? Tbupfetch call g:TbupFetch(<q-args>)
+command -nargs=? Tbupdelete call g:TbupDelete(<q-args>)
 
 nnoremap <unique> <Plug>Tbupfetch; :Tbupfetch<CR>
 if !hasmapto('<Plug>Tbupfetch;')
 	nnoremap <unique> <Leader>tb <Plug>Tbupfetch;
+endif
+
+nnoremap <unique> <Plug>Tbupdelete; :Tbupdelete<CR>
+if !hasmapto('<Plug>Tbupdelete;')
+	nnoremap <unique> <Leader>tbd <Plug>Tbupdelete;
 endif

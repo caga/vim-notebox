@@ -46,9 +46,8 @@ BIB_SUBDIR = "bibfiles"
 NOTES_DIR = nb.notes_dir()
 OUT_DIR = NOTES_DIR
 BIB_DIR = nb.bib_dir(NOTES_DIR)
-HUB_FILE = os.path.join(OUT_DIR, "dbwn-index.md")
-HUB_TITLE = "Dışişleri Bakanlığı Web Notları"
-NOTE_TYPE = "dbwn"
+NOTE_TYPE = "obn dbwn"         # per-country content notes
+INDEX_TYPE = "obn dizin dbwn"  # per-country index note
 CITATION_STYLE = nb.CITATION_STYLE
 
 BIB_AUTHOR = "T.C. Dışişleri Bakanlığı"
@@ -579,34 +578,12 @@ def write_note(path, idno, title, body, country_field, source_url,
 
 
 INDEX_SUFFIX = "Dışişleri Bakanlığı Web Notları"
-LEGACY_INDEX_SUFFIX = "Kunye"
 
 
 def target_directory(found):
-    index_key = next((k for k in found if k.endswith(slugify(INDEX_SUFFIX))), None)
-    if not index_key:
-        index_key = next((k for k in found
-                          if k.endswith(slugify(LEGACY_INDEX_SUFFIX))), None)
-    if index_key:
-        return os.path.dirname(found[index_key]["path"])
     for entry in found.values():
         return os.path.dirname(entry["path"])
     return OUT_DIR
-
-
-def update_hub(index_title, index_path):
-    """dbwn-index.md global hub'ini gunceller (legacy kunyeindex.md'yi bir kez
-    yeniden adlandirir) ve ulke indeksi linkini ekler."""
-    os.makedirs(OUT_DIR, exist_ok=True)
-    legacy_hub = os.path.join(OUT_DIR, "kunyeindex.md")
-    if not os.path.exists(HUB_FILE) and os.path.exists(legacy_hub):
-        try:
-            os.replace(legacy_hub, HUB_FILE)
-            print(f"Yeniden adlandırıldı: {legacy_hub} -> {HUB_FILE}")
-        except OSError as exc:
-            print(f"UYARI {legacy_hub} yeniden adlandırılamadı: {exc}")
-    return nb.update_hub(HUB_FILE, HUB_TITLE, index_title, index_path,
-                         n_type="hub dbwn", keywords="dbwn hub")
 
 
 def run(iso3, name=None, country_field=None):
@@ -652,7 +629,8 @@ def run(iso3, name=None, country_field=None):
 
     os.makedirs(OUT_DIR, exist_ok=True)
     found, duplicate_paths = find_country_files(country_field, display,
-                                                (NOTE_TYPE, "dbk"))
+                                                (NOTE_TYPE,))
+    idx_found, _ = find_country_files(country_field, display, (INDEX_TYPE,))
     if found:
         print(f"Mevcut dosyalar: "
               f"{', '.join(sorted(e['title'] for e in found.values()))}")
@@ -691,7 +669,7 @@ def run(iso3, name=None, country_field=None):
     if not sources_ok:
         print("Bazı sayfalar alınamadı veya ülkeyle uyuşmadı; mevcut notlar korunacak")
 
-    target = target_directory(found)
+    target = target_directory(idx_found or found)
     os.makedirs(target, exist_ok=True)
     modify_date = dt.datetime.now().strftime("%d/%m/%y")
     existing_ids = {int(e["id"]) for e in found.values() if str(e["id"]).strip().isdigit()}
@@ -736,8 +714,7 @@ def run(iso3, name=None, country_field=None):
         emit(strip_parentheses(f"{display} {section}"), body, source_url)
 
     t5 = strip_parentheses(f"{display} {INDEX_SUFFIX}")
-    legacy_t5 = strip_parentheses(f"{display} {LEGACY_INDEX_SUFFIX}")
-    idx_entry = found.get(slugify(t5)) or found.get(slugify(legacy_t5))
+    idx_entry = idx_found.get(slugify(t5))
     if idx_entry:
         idx_id = idx_entry["id"]
         idx_path = idx_entry["path"]
@@ -752,15 +729,14 @@ def run(iso3, name=None, country_field=None):
     links = "\n".join(f"- [{title}]({os.path.relpath(path, idx_dir)})"
                       for path, title in written)
     body5 = f"{links}\n"
-    write_note_file(idx_path, build_header(idx_id, t5, country_field, idx_date, idx_modify, n_type=NOTE_TYPE) + "\n" + body5)
+    write_note_file(idx_path, build_header(idx_id, t5, country_field, idx_date, idx_modify, n_type=INDEX_TYPE) + "\n" + body5)
     print(f"{'Güncellendi' if idx_entry else 'Yazıldı'}: {idx_path}")
 
-    update_hub(t5, idx_path)
     nb.update_country_hub(iso3, "dbwn", idx_path, t5,
                           display=display, country_field=country_field)
 
     current_titles = ({slugify(title) for _, title in written}
-                      | {slugify(t5), slugify(legacy_t5)})
+                      | {slugify(t5)})
     if sources_ok:
         for key, entry in found.items():
             if key not in current_titles and os.path.exists(entry["path"]):
@@ -773,9 +749,18 @@ def run(iso3, name=None, country_field=None):
 
 
 def main():
-    arg = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "TUR"
+    flags, positional = set(), []
+    for a in sys.argv[1:]:
+        if a.startswith("--"):
+            flags.add(a)
+        else:
+            positional.append(a)
+    arg = " ".join(positional) if positional else "TUR"
     try:
         iso3, name, country_field = resolve_country(arg)
+        if "--delete" in flags:
+            return nb.delete_country_type(iso3, "obn dbwn", "dbwn",
+                                          country_field, name)
         return run(iso3, name, country_field)
     except Exception as exc:
         print(f"HATA getDbn: {type(exc).__name__}: {exc}", flush=True)

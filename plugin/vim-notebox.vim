@@ -46,6 +46,115 @@ if !exists("g:docdir")
 	g:docdir = "docs"
 endif
 
+# Rapor tazelik kontrolu (getStmd / getTmd)
+if !exists("g:country_report_check")
+	g:country_report_check = 1
+endif
+if !exists("g:country_report_ask")
+	g:country_report_ask = 1
+endif
+if !exists("g:country_report_max_age_days")
+	g:country_report_max_age_days = 7
+endif
+
+# Rapor tazelik kontrolu (getTbupNotes) - ayri esik
+if !exists("g:tbup_report_check")
+	g:tbup_report_check = 1
+endif
+if !exists("g:tbup_report_ask")
+	g:tbup_report_ask = 1
+endif
+if !exists("g:tbup_report_max_age_days")
+	g:tbup_report_max_age_days = 30
+endif
+
+# Rapor tazelik kontrolu (getTubitakNotes) - ayri esik
+if !exists("g:tubitak_report_check")
+	g:tubitak_report_check = 1
+endif
+if !exists("g:tubitak_report_ask")
+	g:tubitak_report_ask = 1
+endif
+if !exists("g:tubitak_report_max_age_days")
+	g:tubitak_report_max_age_days = 30
+endif
+
+# Rapor tazelik kontrolu (getKosgebNotes) - ayri esik
+if !exists("g:kosgeb_report_check")
+	g:kosgeb_report_check = 1
+endif
+if !exists("g:kosgeb_report_ask")
+	g:kosgeb_report_ask = 1
+endif
+if !exists("g:kosgeb_report_max_age_days")
+	g:kosgeb_report_max_age_days = 30
+endif
+
+# TUBITAK esleme tuslari (varsayilan: <Leader>tu / <Leader>tud)
+if !exists("g:tubitak_fetch_map")
+	g:tubitak_fetch_map = '<Leader>tu'
+endif
+if !exists("g:tubitak_delete_map")
+	g:tubitak_delete_map = '<Leader>tud'
+endif
+
+# KOSGEB esleme tuslari (varsayilan: <Leader>tk / <Leader>tkd)
+if !exists("g:kosgeb_fetch_map")
+	g:kosgeb_fetch_map = '<Leader>tk'
+endif
+if !exists("g:kosgeb_delete_map")
+	g:kosgeb_delete_map = '<Leader>tkd'
+endif
+
+# Rapor tazelik kontrolu (getTuysgmNotes) - ayri esik
+if !exists("g:tuysgm_report_check")
+	g:tuysgm_report_check = 1
+endif
+if !exists("g:tuysgm_report_ask")
+	g:tuysgm_report_ask = 1
+endif
+if !exists("g:tuysgm_report_max_age_days")
+	g:tuysgm_report_max_age_days = 30
+endif
+
+# TUYSGM esleme tuslari (varsayilan: <Leader>ty / <Leader>tyd)
+if !exists("g:tuysgm_fetch_map")
+	g:tuysgm_fetch_map = '<Leader>ty'
+endif
+if !exists("g:tuysgm_delete_map")
+	g:tuysgm_delete_map = '<Leader>tyd'
+endif
+
+# Rapor tazelik kontrolu (getOtherBns) - ayri esik
+if !exists("g:otherbn_report_check")
+	g:otherbn_report_check = 1
+endif
+if !exists("g:otherbn_report_ask")
+	g:otherbn_report_ask = 1
+endif
+if !exists("g:otherbn_report_max_age_days")
+	g:otherbn_report_max_age_days = 30
+endif
+
+# Diger kurum BN esleme tuslari (varsayilan: <Leader>bn / <Leader>bnd)
+if !exists("g:otherbn_fetch_map")
+	g:otherbn_fetch_map = '<Leader>bn'
+endif
+if !exists("g:otherbn_delete_map")
+	g:otherbn_delete_map = '<Leader>bnd'
+endif
+
+# obn -> kalici (permanent) not: MakePermNote
+if !exists("g:permnote_type")
+	g:permnote_type = 'perm'
+endif
+if !exists("g:permnote_split")
+	g:permnote_split = 1
+endif
+if !exists("g:permnote_map")
+	g:permnote_map = '<Leader>pn'
+endif
+
 
 def ListBoxes()
 	var i = 1

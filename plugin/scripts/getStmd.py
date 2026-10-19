@@ -71,7 +71,7 @@ def extractProductData(soup: BeautifulSoup):
         itemd[th1] = rowCol[1].text.split()[0]
         itemd[th2] = translate_text(rowCol[2].text)
         itemd[th3] = int(rowCol[7].text.split()[0].replace(',', '')) * 1000
-        itemd[th4] = f"{round(itemd[th3] / total * 100, 1):.1f}"
+        itemd[th4] = f"{round(itemd[th3] / total * 100, 1) if total else 0.0:.1f}"
         itemd[th3] = nb.human_format(itemd[th3])
         data.append(itemd.copy())
     total = nb.human_format(total)
@@ -114,7 +114,7 @@ def extractCountryData(soup: BeautifulSoup):
         rowCol = row.find_all('td')
         itemd[th1] = translate_text(rowCol[1].text.replace('\n', ''))
         itemd[th2] = int(rowCol[6].text.split()[0].replace(',', '')) * 1000
-        itemd[th3] = f"{round(itemd[th2] / total * 100, 1):.1f}"
+        itemd[th3] = f"{round(itemd[th2] / total * 100, 1) if total else 0.0:.1f}"
         itemd[th2] = nb.human_format(itemd[th2])
         data.append(itemd.copy())
     total = nb.human_format(total)
@@ -162,14 +162,63 @@ def build_body(country):
     return Sep.join([imExTable, imPartTable, exPartTable, imProTable, exProTable]) + kaynak
 
 
+def _parse_flags(argv):
+    flags, positional = set(), []
+    for a in argv:
+        if a.startswith("--"):
+            flags.add(a)
+        else:
+            positional.append(a)
+    return flags, positional
+
+
+def _report_age_text(title, days, source):
+    if days is None:
+        return f"{title} (tarih bilgisi yok)."
+    verb = "güncellendi" if source == "modify" else "oluşturuldu"
+    return f"{title} {nb.human_age(days)} {verb}."
+
+
+def _report(country_field, display, title, n_type):
+    """(entry, days, source) - mevcut rapor notu (yoksa entry None)."""
+    found, _ = nb.find_country_files(country_field, display, (n_type,))
+    entry = found.get(nb.slugify(title))
+    if not entry:
+        return None, None, None
+    days, source, _raw = nb.note_age(entry["path"])
+    return entry, days, source
+
+
 def main():
-    arg = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "TUR"
+    flags, positional = _parse_flags(sys.argv[1:])
+    arg = " ".join(positional) if positional else "TUR"
     iso3, display, country_field = nb.resolve_country(arg)
     if not iso3:
         print(f"Ülke ISO3 kodu çözülemedi: {arg}")
         return 1
-    print(f"Ülke: {display} ({iso3})")
+    if "--delete" in flags:
+        return nb.delete_country_type(iso3, "obn singletrade", "ticaret",
+                                      country_field, display)
+    title = f"{display} Dış Ticaret Rakamları"
+    entry, days, source = _report(country_field, display, title, "obn singletrade")
 
+    if "--check" in flags:
+        if entry:
+            fresh = days is not None and days < nb.REPORT_MAX_AGE_DAYS
+            print(f"REPORT_EXISTS: {entry['path']}")
+            print(f"REPORT_AGE_DAYS: {'' if days is None else days}")
+            print(f"REPORT_AGE_SOURCE: {source}")
+            print(f"REPORT_FRESH: {1 if fresh else 0}")
+            print(f"REPORT_AGE_TEXT: {_report_age_text(title, days, source)}")
+        return 0
+
+    if (entry and days is not None and days < nb.REPORT_MAX_AGE_DAYS
+            and "--force" not in flags):
+        print(f"ATLANDI: {_report_age_text(title, days, source)} "
+              f"({nb.REPORT_MAX_AGE_DAYS} günden yeni; yenilenmedi)")
+        return 0
+
+    print(f"Ülke: {display} ({iso3})")
     try:
         body = build_body(iso3)
     except Exception as exc:
@@ -178,13 +227,12 @@ def main():
     if not body:
         print(f"HATA getStmd: ticaret verisi bulunamadı ({display})")
         return 2
-    title = f"{display} Dış Ticaret Rakamları"
 
     source_url = "https://www.trademap.org/"
     used = set()
     existing_ids = set()
     try:
-        nb.emit_note(display, iso3, title, "singletrade", body, source_url,
+        nb.emit_note(display, iso3, title, "obn singletrade", body, source_url,
                      country_field, used, existing_ids,
                      bib_author="International Trade Centre (ITC)",
                      bib_howpublished="Trade Map")

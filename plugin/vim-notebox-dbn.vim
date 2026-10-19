@@ -53,9 +53,47 @@ def g:DbnFetch(country: string)
 	endif
 enddef
 
+def g:DbnDelete(country: string)
+	var name = country
+	if name == ''
+		name = input('Ülke (iso3/ad): ')
+	endif
+	if name == ''
+		return
+	endif
+	if !exists('g:notes_directory') || g:notes_directory == ''
+		g:notes_directory = '~/notes'
+	endif
+	var box = expand(g:notes_directory)
+	if box == ''
+		box = expand('~/notes')
+	endif
+	$DBWN_NOTES_DIR = box
+	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
+	if confirm(name .. ' için oluşturulan Dışişleri Bakanlığı web notları silinsin mi?(E/H)',
+		"&Evet\n&Hayır", 2) != 1
+		echom 'Silme iptal edildi'
+		return
+	endif
+	var cmd = 'cd ' .. shellescape(box)
+		.. ' && ' .. shellescape(g:dbn_python)
+		.. ' ' .. shellescape(g:dbn_script)
+		.. ' ' .. shellescape(name) .. ' --delete'
+	var out = systemlist(cmd)
+	echom join(out, "\n")
+	checktime
+enddef
+
+
 command -nargs=? Dbnfetch call g:DbnFetch(<q-args>)
+command -nargs=? Dbndelete call g:DbnDelete(<q-args>)
 
 nnoremap <unique> <Plug>Dbnfetch; :Dbnfetch<CR>
 if !hasmapto('<Plug>Dbnfetch;')
 	nnoremap <unique> <Leader>dbn <Plug>Dbnfetch;
+endif
+
+nnoremap <unique> <Plug>Dbndelete; :Dbndelete<CR>
+if !hasmapto('<Plug>Dbndelete;')
+	nnoremap <unique> <Leader>dbnd <Plug>Dbndelete;
 endif

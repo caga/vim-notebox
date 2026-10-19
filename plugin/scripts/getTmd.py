@@ -181,7 +181,8 @@ def productTableMd(country: str, partner: str, Products: list, impex='1', totalV
     k1, k2, k3 = Products[0].keys()
     k4 = '% Oran'
     for product in Products:
-        product[k4] = f"{round(product[k3] / totalValue * 100, 1):.1f}"
+        share = (product[k3] / totalValue * 100) if totalValue else 0.0
+        product[k4] = f"{share:.1f}"
     Products = thirdKeyHumanReadable(Products)
 
     widths = [20, 50, 30]
@@ -209,15 +210,45 @@ def build_body(country: str, partner: str, impsoup, expsoup, n=5):
     return mdReportString + kaynak
 
 
+def _parse_flags(argv):
+    flags, positional = set(), []
+    for a in argv:
+        if a.startswith("--"):
+            flags.add(a)
+        else:
+            positional.append(a)
+    return flags, positional
+
+
+def _report_age_text(title, days, source):
+    if days is None:
+        return f"{title} (tarih bilgisi yok)."
+    verb = "güncellendi" if source == "modify" else "oluşturuldu"
+    return f"{title} {nb.human_age(days)} {verb}."
+
+
+def _report(country_field, display, title, n_type):
+    """(entry, days, source) - mevcut rapor notu (yoksa entry None)."""
+    found, _ = nb.find_country_files(country_field, display, (n_type,))
+    entry = found.get(nb.slugify(title))
+    if not entry:
+        return None, None, None
+    days, source, _raw = nb.note_age(entry["path"])
+    return entry, days, source
+
+
 def getArguments():
     """Ikili ticaret: ulke daima TUR, tek arguman ortak (partner) ulkedir."""
-    args = sys.argv[1:]
-    return "TUR", (args[0] if args else "AUS")
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    return "TUR", (positional[0] if positional else "AUS")
 
 
 def main(country="TUR", partner="AUS"):
+    flags = set()
     if __name__ == "__main__":
-        country, partner = getArguments()
+        flags, positional = _parse_flags(sys.argv[1:])
+        country = "TUR"
+        partner = positional[0] if positional else "AUS"
 
     country_iso, country_display, country_field = nb.resolve_country(country)
     partner_iso, partner_display, partner_field = nb.resolve_country(partner)
@@ -227,6 +258,29 @@ def main(country="TUR", partner="AUS"):
     if not partner_iso:
         print(f"Ortak ülke ISO3 kodu çözülemedi: {partner}")
         return 1
+    if "--delete" in flags:
+        return nb.delete_country_type(partner_iso, "obn bilateraltrade", "ticaret",
+                                      partner_field, partner_display)
+    title = f"{country_display} - {partner_display} İkili Ticaret Rakamları"
+    entry, days, source = _report(partner_field, partner_display, title,
+                                  "obn bilateraltrade")
+
+    if "--check" in flags:
+        if entry:
+            fresh = days is not None and days < nb.REPORT_MAX_AGE_DAYS
+            print(f"REPORT_EXISTS: {entry['path']}")
+            print(f"REPORT_AGE_DAYS: {'' if days is None else days}")
+            print(f"REPORT_AGE_SOURCE: {source}")
+            print(f"REPORT_FRESH: {1 if fresh else 0}")
+            print(f"REPORT_AGE_TEXT: {_report_age_text(title, days, source)}")
+        return 0
+
+    if (entry and days is not None and days < nb.REPORT_MAX_AGE_DAYS
+            and "--force" not in flags):
+        print(f"ATLANDI: {_report_age_text(title, days, source)} "
+              f"({nb.REPORT_MAX_AGE_DAYS} günden yeni; yenilenmedi)")
+        return 0
+
     print(f"Ülke: {country_display} ({country_iso}) - Ortak: "
           f"{partner_display} ({partner_iso})")
 
@@ -241,13 +295,12 @@ def main(country="TUR", partner="AUS"):
         print(f"İkili ticaret verisi bulunamadı ({country_display} - {partner_display}); "
               "ülke Trade Map'e doğrudan veri bildirmiyor olabilir.")
         return 2
-    title = f"{country_display} - {partner_display} İkili Ticaret Rakamları"
 
     source_url = "https://www.trademap.org/"
     used = set()
     existing_ids = set()
     try:
-        nb.emit_note(partner_display, partner_iso, title, "bilateraltrade", body,
+        nb.emit_note(partner_display, partner_iso, title, "obn bilateraltrade", body,
                      source_url, partner_field, used, existing_ids,
                      bib_author="International Trade Centre (ITC)",
                      bib_howpublished="Trade Map")

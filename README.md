@@ -8,3 +8,15 @@ it is vim9script btw. :)
 :)
 
 ...
+
+## Documentation
+
+Full documentation is in `doc/vim-notebox.txt`.  Generate the help tags once
+after installing:
+
+    :helptags <plugin>/doc
+
+then read it with:
+
+    :help vim-notebox
+

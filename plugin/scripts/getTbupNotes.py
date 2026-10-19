@@ -19,10 +19,9 @@ Rules:
   * Section notes are reused across runs via their `tbup_key` field.
 
 Output notes use the vault's standard YAML header with:
-    n_type: tbup          (section notes)
-    n_type: index tbup    (the per-country hub/index note)
-    n_type: hub tbup      (the general index "Ticaret Bakanlığı Ülke Profilleri",
-                           file tbup-index.md)
+    n_type: obn tbup        (section/content notes)
+    n_type: obn dizin tbup  (the per-country tbup index)
+    n_type: hub obn genel   (the global OBN hub, file obn-hub.md)
 
 Two modes (auto-detected):
   * plugin: when `notebox` is importable (vim-notebox), notes go to
@@ -34,6 +33,7 @@ Two modes (auto-detected):
 Usage:
     getTbupNotes.py <pdf|country|iso3> [iso3] [--headings] [--dir DIR]
                     [--refresh] [--download-only] [--yes] [--no-prune]
+                    [--check] [--force]
 
     <pdf|country|iso3>  a PDF path, a Turkish country name, or an ISO3 code
     iso3                optional ISO-3166 alpha-3 code (e.g. nzl)
@@ -44,6 +44,13 @@ Usage:
     --download-only     download the PDF for a country and stop
     --yes               auto-confirm deletion of orphan section notes
     --no-prune          never delete orphan section notes
+    --check             only report the existing profile's age (no download,
+                        no writes); prints REPORT_* lines
+    --force             ignore the freshness gate and regenerate
+
+Freshness gate: if the per-country profile index exists and is newer than
+NOTES_TBUP_REPORT_MAX_AGE_DAYS (default 30) days, regeneration is skipped
+(no PDF download). --headings and --download-only always bypass the gate.
 """
 
 import os
@@ -76,14 +83,14 @@ if not PLUGIN:
 
 STANDALONE_OUT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-AUTHOR = "dbscript"
-N_TYPE_NOTE = "tbup"
-N_TYPE_COUNTRY = "index tbup"   # per-country hub
-N_TYPE_GLOBAL = "hub tbup"      # general index (tbup-index.md)
+AUTHOR = os.path.splitext(os.path.basename(sys.argv[0] or ""))[0] or "getTbupNotes"
+N_TYPE_NOTE = "obn tbup"           # section (content) notes
+N_TYPE_COUNTRY = "obn dizin tbup"  # per-country tbup index
+N_TYPE_GLOBAL = "hub obn genel"    # global OBN hub (obn-hub.md)
 CITATION_STYLE = "csl/ieee-with-url.csl"
 
-INDEX_FILE = "tbup-index.md"
-INDEX_TITLE = "Ticaret Bakanlığı Ülke Profilleri"
+INDEX_FILE = "obn-hub.md"
+INDEX_TITLE = "Otomatik Bilgi Notları Dizini"
 COUNTRY_H2 = "Ticaret Bakanlığı Ülke Profil Notları"
 
 PUBLISHER = "T.C. Ticaret Bakanlığı"
@@ -457,9 +464,9 @@ def _int_id(info):
 
 
 def _is_country_tbup(info):
-    """A per-country tbup hub: tbup note for a country with no tbup_key."""
+    """A per-country tbup index: n_type has both 'tbup' and 'dizin'."""
     toks = n_type_tokens(info)
-    if "tbup" not in toks:
+    if "tbup" not in toks or "dizin" not in toks:
         return False
     if not (info.get("country", "") or "").strip():
         return False
@@ -493,9 +500,9 @@ def find_section_notes(iso3):
     legacy = []
     for path, info in _iter_notes():
         toks = n_type_tokens(info)
-        if "tbup" != (toks[0] if toks else ""):
+        if "tbup" not in toks:
             continue
-        if "index" in toks or "hub" in toks:
+        if "dizin" in toks or "hub" in toks:
             continue
         if (info.get("country", "") or "").strip().lower() != iso:
             continue
@@ -516,7 +523,7 @@ def find_global_index():
     best = None
     for path, info in _iter_notes():
         toks = n_type_tokens(info)
-        is_index = ("hub" in toks and "tbup" in toks) \
+        is_index = ("hub" in toks and "obn" in toks) \
             or os.path.basename(path) == INDEX_FILE
         if not is_index:
             continue
@@ -546,7 +553,8 @@ def find_country_tbup_all():
 
 def parse_args(argv):
     opts = {"headings": False, "download_only": False, "refresh": False,
-            "dir": None, "yes": False, "no_prune": False}
+            "dir": None, "yes": False, "no_prune": False,
+            "check": False, "force": False, "delete": False}
     positional = []
     i = 0
     while i < len(argv):
@@ -561,6 +569,12 @@ def parse_args(argv):
             opts["yes"] = True
         elif arg == "--no-prune":
             opts["no_prune"] = True
+        elif arg == "--check":
+            opts["check"] = True
+        elif arg == "--force":
+            opts["force"] = True
+        elif arg == "--delete":
+            opts["delete"] = True
         elif arg == "--dir":
             i += 1
             opts["dir"] = argv[i] if i < len(argv) else None
@@ -600,12 +614,9 @@ def resolve_source(source, iso3_arg, opts):
 # ---------------------------------------------------------------------------
 
 def finalize_plugin(iso3, display, country_field, hub_path, hub_title):
-    """Link the per-country tbup hub into the country hub and global index."""
+    """Link the per-country tbup index into the country OBN page/vault."""
     nb.update_country_hub(iso3, "tbup", hub_path, hub_title,
                           display=display, country_field=country_field)
-    cfg = nb.KIND["tbup"]
-    nb.update_hub(cfg["hub_file"], cfg["hub_title"], hub_title, hub_path,
-                  n_type=cfg["hub_n_type"], keywords=cfg["hub_keywords"])
 
 
 def finalize_standalone(hub_path, today, alloc_id):
@@ -696,6 +707,73 @@ def render_outline(node, note_id, out, depth=1):
 
 
 # ---------------------------------------------------------------------------
+# Rapor yas kontrolu (getStmd/getTmd ile ayni mantik, ayri esik)
+# ---------------------------------------------------------------------------
+
+TBUP_AGE_ENV = "NOTES_TBUP_REPORT_MAX_AGE_DAYS"
+
+
+def _tbup_max_age_days():
+    try:
+        return int(os.environ.get(TBUP_AGE_ENV, "30"))
+    except ValueError:
+        return 30
+
+
+def resolve_iso3_offline(source, iso3_arg):
+    """Ulke adi/pdf'ten indirme yapmadan iso3 cozer (offline)."""
+    is_pdf = os.path.isfile(source) and source.lower().endswith(".pdf")
+    if is_pdf:
+        iso3 = iso3_arg or infer_iso3(source)
+    else:
+        iso3, _display, _key = getTbupPdf.resolve_country(source)
+        iso3 = iso3_arg or iso3
+    return iso3.lower() if iso3 else None
+
+
+def _age_text(title, days, source):
+    if days is None:
+        return f"{title} (tarih bilgisi yok)."
+    verb = "güncellendi" if source == "modify" else "oluşturuldu"
+    human = "bugün" if days <= 0 else f"{days} gün önce"
+    return f"{title} {human} {verb}."
+
+
+def tbup_report_status(source, iso3_arg):
+    """(hub, days, source, title) - mevcut per-country tbup index notu."""
+    iso3 = resolve_iso3_offline(source, iso3_arg)
+    if not iso3:
+        return None, None, None, ""
+    hub = find_country_tbup(iso3)
+    if not hub:
+        return None, None, None, ""
+    info = parse_front_matter(hub["path"])
+    title = re.sub(r"\s+", " ", (info.get("title") or "")
+                   .replace("\xa0", " ")).strip().strip('"')
+    if not title:
+        name = lu.iso3ToName(iso3.upper())
+        title = f"{name if name != 1 else iso3.upper()} Ülke Profili"
+    raw_mod = (info.get("modify", "") or "").strip()
+    raw_date = (info.get("date", "") or "").strip()
+    if raw_mod:
+        src, raw = "modify", raw_mod
+    elif raw_date:
+        src, raw = "date", raw_date
+    else:
+        return hub, None, "none", title
+    d = None
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            d = dt.datetime.strptime(raw, fmt).date()
+            break
+        except ValueError:
+            continue
+    if d is None:
+        return hub, None, "none", title
+    return hub, (dt.date.today() - d).days, src, title
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -705,9 +783,43 @@ def main(argv):
         print(__doc__)
         return 1
 
+    iso3_arg = positional[1] if len(positional) > 1 else None
+    max_age = _tbup_max_age_days()
+
+    if opts["delete"]:
+        if not PLUGIN:
+            print("--delete yalnızca eklenti (plugin) modunda desteklenir.")
+            return 1
+        iso3 = resolve_iso3_offline(positional[0], iso3_arg)
+        if not iso3:
+            print("ISO-3 kodu çözülemedi.")
+            return 1
+        name = lu.iso3ToName(iso3.upper())
+        return nb.delete_country_type(
+            iso3, "obn tbup", "tbup", iso3.lower(),
+            name if name != 1 else iso3.upper())
+
+    if opts["check"]:
+        hub, days, source, title = tbup_report_status(positional[0], iso3_arg)
+        if hub:
+            fresh = 1 if (days is not None and days < max_age) else 0
+            print(f"REPORT_EXISTS: {hub['path']}")
+            print(f"REPORT_AGE_DAYS: {'' if days is None else days}")
+            print(f"REPORT_AGE_SOURCE: {source}")
+            print(f"REPORT_FRESH: {fresh}")
+            print(f"REPORT_AGE_TEXT: {_age_text(title, days, source)}")
+        return 0
+
+    if not opts["force"] and not opts["download_only"] and not opts["headings"]:
+        hub, days, source, title = tbup_report_status(positional[0], iso3_arg)
+        if hub and days is not None and days < max_age:
+            print(f"ATLANDI: {_age_text(title, days, source)} "
+                  f"({max_age} günden yeni; yenilenmedi)")
+            return 0
+
     pdf_path, iso3, pdf_url, pdf_filename = resolve_source(
         positional[0],
-        positional[1] if len(positional) > 1 else None,
+        iso3_arg,
         opts)
 
     if opts["download_only"]:

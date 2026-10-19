@@ -1,0 +1,747 @@
+*vim-notebox.txt*   A zettelkasten note box with auto-fetched country notes
+                                                            *vim-notebox*
+                                  vim9script plugin   Last change: 2026 Oct 13
+
+==============================================================================
+CONTENTS                                                    *vim-notebox-contents*
+
+  1. Introduction .................................. |vim-notebox-intro|
+  2. Requirements and installation ................. |vim-notebox-install|
+  3. Quick start ................................... |vim-notebox-quickstart|
+  4. Configuration ................................. |vim-notebox-config|
+  5. Core note management .......................... |vim-notebox-notes|
+  6. Data fetchers ................................. |vim-notebox-fetch|
+  7. Freshness gate ................................ |vim-notebox-freshness|
+  8. Deletion ...................................... |vim-notebox-delete|
+  9. Note types and vault layout ................... |vim-notebox-note-types|
+ 10. Export and viewing ............................ |vim-notebox-export|
+ 11. Helper tools .................................. |vim-notebox-helpers|
+ 12. Python CLI reference .......................... |vim-notebox-cli|
+ 13. Troubleshooting ............................... |vim-notebox-trouble|
+ 14. Glossary (Turkish UI strings) ................. |vim-notebox-glossary|
+
+==============================================================================
+1. INTRODUCTION                                            *vim-notebox-intro*
+
+vim-notebox is a modified zettelkasten implementation for local note taking and
+knowledge-base work.  Notes are plain Markdown files with a YAML header, all
+stored flat inside a "note box" directory.  In addition to manual notes, a set
+of Python scripts can fetch external data (Ministry of Foreign Affairs pages,
+World Bank indicators, Trade Map trade figures, Trade Ministry country-profile
+PDFs, country maps) and turn them into notes that are linked into per-country
+"dashboard" pages.
+
+The plugin is written in |vim9script|.
+
+Main features:
+  - Flat note storage; every note is `<epoch-id>.md`.
+  - YAML front matter with an `n_type` classification and per-note bibfile.
+  - Automatic back-references and an orphan-notes report.
+  - Keyword search across the box, with quickfix integration.
+  - "Note boxes": several note directories you can switch between.
+  - One-line commands/mappings to fetch a whole country's information notes.
+  - Freshness gate: recent reports are not re-downloaded; older ones prompt.
+  - `--delete` (and vim delete commands) to remove generated note sets.
+  - Pandoc export to PDF/DOCX/beamer.
+
+==============================================================================
+2. REQUIREMENTS AND INSTALLATION                            *vim-notebox-install*
+
+Requirements ~
+  - Vim 9 with |vim9script|.
+  - The `bibtexcite.vim` plugin (used for per-note bibliography files).
+  - Python 3 and the script dependencies.
+
+Install ~
+  1. Place the plugin so `plugin/` and `ftplugin/` are in your 'runtimepath'
+     (for example `~/.vim/plugged/vim-notebox`).
+
+  2. Install the Python dependencies into the bundled virtualenv:
+>
+     cd <plugin>/plugin/scripts
+     python3 -m venv venv
+     venv/bin/python3 -m pip install -r requirements.txt
+<
+     The scripts are run with `plugin/scripts/venv/bin/python3` by default
+     (change with the `g:*_python` options, see |vim-notebox-config|).
+
+  3. Set your note box and, optionally, your name:
+>
+     let g:notes_directory = '~/notes'
+     let g:notes_author    = 'Your Name'
+<
+
+  4. Generate the help tags so `:help vim-notebox` works:
+>
+     :helptags <plugin>/doc
+<
+     If the plugin is installed as a normal runtimepath package you can run
+     `:helptags ALL` instead.
+
+  5. (PDF/DOCX export only) Install `pandoc`, `pandoc-crossref`,
+     `pandoc-plot`, and view the helpers `links-to-pdf.lua` and
+     `table-border.lua` under `$HOME/.bin`, plus `zathura` and
+     `onlyOffice.AppImage`.
+
+==============================================================================
+3. QUICK START                                          *vim-notebox-quickstart*
+
+A short end-to-end example.  Start by choosing a note box (see
+|g:notes_directory| and |g:boxes|):
+>
+     :Choosebox
+<
+Then create a manual note:
+>
+     :Newnote Nepal delegation meeting
+<
+Fetch all auto-generated pages for one country (a live log window is opened and
+the country dashboard is shown when finished):
+>
+     :Countryfetch Nepal
+<
+If a trade or profile report already exists and is older than the threshold, a
+confirmation dialog appears, e.g.
+>
+     Yeni Zelanda Dış Ticaret Rakamları 2 gün önce güncellendi.
+     Yeni rapor oluşturulsun mu? (E/H)
+     [Yeni Zelanda Foreign Trade Figures were updated 2 days ago.
+      Generate a new report? (Yes/No)]
+<
+Choose "Evet" (Yes) to regenerate, "Hayır" (No) to keep the old report.  Fresh
+reports are skipped silently and reported as "yenilenmedi" (not refreshed).
+
+Afterwards you can open the country dashboard, write back-references, and export
+to PDF:
+>
+     :Whichbox
+     :Writeback
+     :Viewpdf
+<
+Auto-fetched notes are grouped per country: the country dashboard
+(`hub {iso3}`) links to a per-country "Otomatik Bilgi Notları" page, which in
+turn links the per-type index pages.  See |vim-notebox-note-types|.
+
+==============================================================================
+4. CONFIGURATION                                             *vim-notebox-config*
+
+Core ~
+                                                             *g:notes_directory*
+  g:notes_directory   Default: "~/notes"
+        The active note box.  Auto-generated notes are written here.
+
+                                                                    *g:boxes*
+  g:boxes             Default: ["~/notes", "~/notes2"]
+        The list offered by |:Choosebox|.
+
+                                                                  *g:notes_author*
+  g:notes_author      Default: " "
+        Author written into the YAML header of new manual notes.
+
+                                                                     *g:pdfdir*
+  g:pdfdir            Default: "pdfs"
+        Directory (relative to the box) for exported PDFs.
+
+                                                                     *g:docdir*
+  g:docdir            Default: "docs"
+        Directory for exported DOCX files.
+
+                                                          *g:bibfiles_directory*
+  g:bibfiles_directory   Default: "bibfiles"
+        Sub-directory that holds per-note `.bib` files.
+
+                                                                     *g:bibfile*
+  g:bibfile           Default: "<plugin>/plugin/notes.bib"
+        Default bibliography file for non-generated notes.
+
+                                                             *g:citation_style*
+  g:citation_style    Default: "<plugin>/plugin/ieee-with-url.csl"
+        CSL citation style path written into new notes.
+
+Fetchers ~
+                                                                 *g:notes_autohub*
+  g:notes_autohub     Default: 1
+        When 1, a missing country dashboard (`hub {iso3}`) is created
+        automatically during a fetch.
+
+                                                            *g:country_map_height*
+  g:country_map_height   Default: 350
+        Height (px) of the map image inserted into a country dashboard.
+
+                                                              *g:country_async*
+  g:country_async     Default: 1
+        When 1, |:Countryfetch| runs asynchronously (Vim does not block).
+
+                                                           *g:country_keep_log*
+  g:country_keep_log  Default: 0
+        When 1, keep the |:Countryfetch| log window open after completion.
+
+                                                               *g:tbup_async*
+  g:tbup_async        Default: 1
+        When 1, |:Tbupfetch| runs asynchronously.
+
+                                                            *g:tubitak_async*
+  g:tubitak_async     Default: 1
+        When 1, |:Tubitakfetch| runs asynchronously.
+
+                                                             *g:kosgeb_async*
+  g:kosgeb_async      Default: 1
+        When 1, |:Kosgebfetch| runs asynchronously.
+
+                                                             *g:tuysgm_async*
+  g:tuysgm_async      Default: 1
+        When 1, |:Tuysgmfetch| runs asynchronously.
+
+                                                            *g:otherbn_async*
+  g:otherbn_async     Default: 1
+        When 1, |:Otherbnfetch| runs asynchronously.
+
+                                                               *g:tbup_pdfdir*
+  g:tbup_pdfdir       Default: "<box>/tbupPdfs"
+        Folder where country-profile PDFs are downloaded.
+
+                                                              *g:gmap_height*
+  g:gmap_height       Default: 350
+        Height (px) of the map link inserted by |:Gmapfetch|.
+
+Report freshness gate ~
+                                                 *g:country_report_max_age_days*
+  g:country_report_max_age_days   Default: 7
+        Trade reports (|:Stmdfetch|, |:Tmdfetch|) older than this many days
+        prompt for regeneration.  Newer ones are kept.
+                                                       *g:country_report_check*
+  g:country_report_check   Default: 1
+        When 0, disable the trade-report age gate (always regenerate).
+                                                        *g:country_report_ask*
+  g:country_report_ask     Default: 1
+        When 1, ask (Evet/Hayır) before regenerating a stale trade report.
+
+                                                    *g:tbup_report_max_age_days*
+  g:tbup_report_max_age_days   Default: 30
+        Same idea for country-profile reports (|:Tbupfetch|).
+                                                          *g:tbup_report_check*
+  g:tbup_report_check   Default: 1
+                                                           *g:tbup_report_ask*
+  g:tbup_report_ask     Default: 1
+
+                                                 *g:tubitak_report_max_age_days*
+  g:tubitak_report_max_age_days   Default: 30
+        Same idea for TÜBİTAK reports (|:Tubitakfetch|).
+                                                       *g:tubitak_report_check*
+  g:tubitak_report_check   Default: 1
+                                                        *g:tubitak_report_ask*
+  g:tubitak_report_ask     Default: 1
+
+                                                  *g:kosgeb_report_max_age_days*
+  g:kosgeb_report_max_age_days   Default: 30
+        Same idea for KOSGEB reports (|:Kosgebfetch|).
+                                                        *g:kosgeb_report_check*
+  g:kosgeb_report_check   Default: 1
+                                                         *g:kosgeb_report_ask*
+  g:kosgeb_report_ask     Default: 1
+
+                                                  *g:tuysgm_report_max_age_days*
+  g:tuysgm_report_max_age_days   Default: 30
+        Same idea for TUYSGM reports (|:Tuysgmfetch|).
+                                                        *g:tuysgm_report_check*
+  g:tuysgm_report_check   Default: 1
+                                                         *g:tuysgm_report_ask*
+  g:tuysgm_report_ask     Default: 1
+
+                                                 *g:otherbn_report_max_age_days*
+  g:otherbn_report_max_age_days   Default: 30
+        Same idea for the "other institution" notes (|:Otherbnfetch|).
+                                                        *g:otherbn_report_check*
+  g:otherbn_report_check   Default: 1
+                                                         *g:otherbn_report_ask*
+  g:otherbn_report_ask     Default: 1
+
+                                                        *g:tubitak_fetch_map*
+  g:tubitak_fetch_map   Default: '<Leader>tu'
+        Normal-mode mapping for |:Tubitakfetch|.
+                                                       *g:tubitak_delete_map*
+  g:tubitak_delete_map  Default: '<Leader>tud'
+        Normal-mode mapping for |:Tubitakdelete|.
+                                                         *g:kosgeb_fetch_map*
+  g:kosgeb_fetch_map    Default: '<Leader>tk'
+        Normal-mode mapping for |:Kosgebfetch|.
+                                                        *g:kosgeb_delete_map*
+  g:kosgeb_delete_map   Default: '<Leader>tkd'
+        Normal-mode mapping for |:Kosgebdelete|.
+                                                         *g:tuysgm_fetch_map*
+  g:tuysgm_fetch_map    Default: '<Leader>ty'
+        Normal-mode mapping for |:Tuysgmfetch|.
+                                                        *g:tuysgm_delete_map*
+  g:tuysgm_delete_map   Default: '<Leader>tyd'
+        Normal-mode mapping for |:Tuysgmdelete|.
+                                                        *g:otherbn_fetch_map*
+  g:otherbn_fetch_map   Default: '<Leader>bn'
+        Normal-mode mapping for |:Otherbnfetch|.
+                                                       *g:otherbn_delete_map*
+  g:otherbn_delete_map  Default: '<Leader>bnd'
+        Normal-mode mapping for |:Otherbndelete|.
+
+                                                            *g:permnote_type*
+  g:permnote_type      Default: 'perm'
+        n_type written by |:MakePermNote| (unless overridden by its argument).
+                                                           *g:permnote_split*
+  g:permnote_split     Default: 1
+        When 1, |:MakePermNote| opens the new note in a split (0 = current
+        window).
+                                                            *g:permnote_map*
+  g:permnote_map       Default: '<Leader>pn'
+        Normal-mode mapping for |:MakePermNote|.
+
+Interpreter and script paths ~
+  The following let you override the Python interpreter and script locations,
+  one pair per fetcher.  Defaults point at `plugin/scripts/venv/bin/python3`
+  and the matching script.
+
+  `g:country_python` / `g:country_script`   (getCountry.py)
+  `g:dbn_python`     / `g:dbn_script`       (getDbn.py)
+  `g:wb_python`      / `g:wb_script`        (getData.py)
+  `g:stmd_python`    / `g:stmd_script`      (getStmd.py)
+  `g:tmd_python`     / `g:tmd_script`       (getTmd.py)
+  `g:tbup_python`    / `g:tbup_script`      (getTbupNotes.py)
+  `g:tubitak_python` / `g:tubitak_script`   (getTubitakNotes.py)
+  `g:kosgeb_python`  / `g:kosgeb_script`    (getKosgebNotes.py)
+  `g:tuysgm_python`  / `g:tuysgm_script`    (getTuysgmNotes.py)
+  `g:otherbn_python` / `g:otherbn_script`   (getOtherBns.py)
+  `g:gmap_python`    / `g:gmap_script`      (getMap.py)
+
+Environment variables ~
+  The scripts also read these (set by the wrappers): `NOTES_DIR`,
+  `NOTES_BIB_DIR`, `NOTES_AUTOHUB`, `NOTES_MAP_HEIGHT`,
+  `NOTES_REPORT_MAX_AGE_DAYS`, `NOTES_TBUP_REPORT_MAX_AGE_DAYS`,
+  `NOTES_TUBITAK_REPORT_MAX_AGE_DAYS`, `NOTES_KOSGEB_REPORT_MAX_AGE_DAYS`,
+  `NOTES_TUYSGM_REPORT_MAX_AGE_DAYS`, `NOTES_OTHERBN_REPORT_MAX_AGE_DAYS`,
+  `TBUP_PDF_DIR`, `GMAP_NOTES_DIR`, `GMAP_MAPS_DIR`.
+
+  getTuysgmNotes.py also uses `SOFFICE_BIN` (default `soffice`) for the
+  LibreOffice `.doc` -> HTML conversion.
+
+==============================================================================
+5. CORE NOTE MANAGEMENT                                       *vim-notebox-notes*
+
+Commands ~
+                                                                   *:Newnote*
+:Newnote {title}       Create a new note `<epoch-id>.md` from the skeleton,
+                       set id/date/citation-style/bibfile and title.
+
+                                                                  *:Writeback*
+:Writeback             Rebuild the current note's `#BackReferences:` section
+                       from other notes that reference it.
+
+                                                                *:Getnoteid*
+:Getnoteid {file}      Echo the numeric id stored in a note's YAML header.
+
+                                                              *:Openlastnote*
+:Openlastnote          Open the most recently modified note.
+
+                                                                   *:Openbox*
+:Openbox               Edit the note box as a directory (netrw).
+
+                                                                 *:Choosebox*
+:Choosebox             Pick a box from |g:boxes| and `cd` into it.
+
+                                                                *:Notesearch*
+:Notesearch {kw;kw}    Search the box for keywords (semicolon-separated, all
+                       must match) and list results in the quickfix list.
+
+                                                            *:NoteSearchInbox*
+:NoteSearchInbox {kw}  Like |:Notesearch| but asks for a box first.
+
+                                                                 *:Whichbox*
+:Whichbox              Echo the active note box.
+
+                                                                  *:Orphans*
+:Orphans               Build `OrphanNotes.md` listing notes that nothing
+                       references.
+
+                                                                *:Lastnotes*
+:Lastnotes {n}         List the N most recent notes in the quickfix list.
+
+                                                               *:Modifydate*
+:Modifydate            Update the `modify:` field of the current note to today.
+
+Mappings (default <Leader>) ~
+  <Leader>nn    :Newnote
+  <Leader>yn    Yank a Markdown link to the current note
+  <Leader>ob    :Openbox
+  <Leader>ln    :Openlastnote
+  <Leader>sb    :Choosebox
+  <Leader>s     Search the word under the cursor
+  <Leader>ns    :Notesearch
+  <Leader>wb    :Whichbox
+  <Leader>bl    :Writeback
+  <Leader>nsb   :NoteSearchInbox
+  <Leader>md    :Modifydate
+  <Leader>cbf   Create a bibfile for the current note and write its path
+  <Leader>obf   Open the current note's bibfile
+  <Leader>lbf   Load the current note's bibfile into bibtexcite
+
+Backlinks and orphans: the `#BackReferences:` section at the end of a note is
+preserved across rewrites (only the note body above it is regenerated).
+
+==============================================================================
+6. DATA FETCHERS                                               *vim-notebox-fetch*
+
+Each fetcher has a `:Xxxfetch` command (generate) and a `:Xxxdelete` command
+(remove the generated notes for a country); see |vim-notebox-delete|.
+
+:Countryfetch {country}                                       *:Countryfetch*
+  <Leader>cf
+  Run getCountry.py: generate every auto page for a country (MFA web notes,
+  World Bank indicators, single + bilateral trade, Trade Ministry profile,
+  map), link them into the country dashboard and open it.  Runs async; shows a
+  live log.  Accepts ISO3 or a Turkish name (e.g. `Nepal`).
+
+:Dbnfetch {country}                                              *:Dbnfetch*
+  <Leader>dbn
+  Run getDbn.py: Ministry of Foreign Affairs "Ülke Künyesi" (country fact
+  sheet) notes and the per-country dbwn index.
+
+:Wbfetch {country}                                               *:Wbfetch*
+  <Leader>wbr
+  Run getData.py: World Bank indicator report ("Gösterge Raporları" —
+  Indicator Reports).
+
+:Stmdfetch {country}                                           *:Stmdfetch*
+  <Leader>stmd
+  Run getStmd.py: single-country foreign-trade figures ("Dış Ticaret
+  Rakamları" — Foreign Trade Figures) from Trade Map.
+
+:Tmdfetch {partner}                                              *:Tmdfetch*
+  <Leader>tmd
+  Run getTmd.py: bilateral Türkiye–{partner} figures ("İkili Ticaret
+  Rakamları" — Bilateral Trade Figures).  The note is attached to the partner.
+
+:Tbupfetch {country}                                           *:Tbupfetch*
+  <Leader>tb
+  Run getTbupNotes.py: download the Trade Ministry country-profile PDF
+  ("Ülke Profili" — Country Profile) and split it into section notes and a
+  per-country index.
+
+:Tubitakfetch {country}                                     *:Tubitakfetch*
+  <Leader>tu
+  Run getTubitakNotes.py: read the TÜBİTAK "Bilgi Notu" PDF(s) under
+  `data/{iso3}/gbn/tubitak/` and split each into section notes plus a
+  per-country index that links the source PDF(s).  No download.
+  Mapping is configurable: |g:tubitak_fetch_map|.
+
+:Kosgebfetch {country}                                       *:Kosgebfetch*
+  <Leader>tk
+  Run getKosgebNotes.py: read the KOSGEB "Bilgi Notu" DOCX(s) under
+  `data/{iso3}/gbn/kosgeb/` and split each into section notes plus a
+  per-country index that links the source DOCX(s).  No download.
+  Mapping is configurable: |g:kosgeb_fetch_map|.
+
+:Tuysgmfetch {country}                                       *:Tuysgmfetch*
+  <Leader>ty
+  Run getTuysgmNotes.py: read the TUYSGM "Bilgi Notu" .doc(s) under
+  `data/{iso3}/gbn/tuysgm/` (converted to HTML via LibreOffice) and split each
+  into section notes plus a per-country index that links the source file(s).
+  No download.  Mapping is configurable: |g:tuysgm_fetch_map|.
+
+:Otherbnfetch {country}                                     *:Otherbnfetch*
+  <Leader>bn
+  Run getOtherBns.py: scan `data/gbns/{inst}/` for multi-country institution
+  notes (.doc/.docx/.pdf), extract only the sections about {country}, infer the
+  institute (folder name, else content, else ask), and produce per-country,
+  per-institute notes and hubs exactly like |:Tubitakfetch|/|:Tuysgmfetch|.
+  Duplicate files are reduced to one (the newest).
+  TÜBİTAK/KOSGEB/TÜYSGM are handled by their own commands and are excluded
+  here.  No download.  Mapping is configurable: |g:otherbn_fetch_map|.
+
+:MakePermNote [n_type]                                     *:MakePermNote*
+  <Leader>pn
+  From the current `obn` note, open a new **unsaved** buffer named `<newid>.md`
+  with a rewritten YAML header: new `id`, `date`=today, empty `modify`,
+  `author`=g:notes_author, `n_type`=perm (or the argument / |g:permnote_type|),
+  `bibliography`=`bibfiles/<newid>.bib`, the ` - <inst> BN` suffix stripped from
+  the title, and cleared BackReferences.  A copy of the note's bibfile is
+  written to `bibfiles/<newid>.bib`; the note itself is never saved.  Opens in a
+  split unless |g:permnote_split| is 0.
+
+:Gmapfetch {country}                                           *:Gmapfetch*
+  <Leader>gm
+  Run getMap.py: download and crop the country map to
+  `data/img/maps/{iso3}.png` and insert a Markdown image link at the cursor.
+
+Output layout: each fetcher writes `<id>.md` notes in the box root, a matching
+`bibfiles/<id>.bib`, updates the per-country dashboards, the `obn-hub.md`
+registry, and (for maps) `data/img/maps/`.  See |vim-notebox-note-types|.
+
+==============================================================================
+7. FRESHNESS GATE                                         *vim-notebox-freshness*
+
+When a trade or country-profile report already exists, vim-notebox shows its
+age and asks before regenerating:
+
+  - Trade reports (|:Stmdfetch|, |:Tmdfetch|): threshold
+    |g:country_report_max_age_days| (default 7).
+  - Country profiles (|:Tbupfetch|): threshold |g:tbup_report_max_age_days|
+    (default 30).
+
+Behaviour:
+  - no report            -> generate.
+  - age < threshold      -> keep the report, print
+        "{title} N gün önce güncellendi (T günden yeni; yenilenmedi)"
+        [updated N days ago (< T days); not refreshed].  No download.
+  - age >= threshold     -> confirm dialog:
+>
+     {title} N gün önce güncellendi.
+     Yeni rapor oluşturulsun mu? (E/H)
+<
+        "Evet" (Yes) regenerates; "Hayır" (No) opens the existing report.
+  - |g:country_report_check| / |g:tbup_report_check| = 0 disables the gate.
+  - Passing `--force` to the script always regenerates.
+
+The age is taken from the note's `modify:` field, or its `date:` field when
+`modify:` is empty (the dialog says "oluşturuldu" = "created" in that case).
+
+==============================================================================
+8. DELETION                                                   *vim-notebox-delete*
+
+Each fetcher can remove the notes it generated for a country, together with
+their bibfiles and the corresponding section on the per-country OBN page.
+
+:Countrydelete {country}                                     *:Countrydelete*
+  <Leader>cD
+  Umbrella cleanup: delete the country's OBN page, all its auto notes and
+  per-type indexes, and their links.  The country dashboard, `index.md`, and
+  the map are kept.  Prompts:
+>
+     {Ülke} için oluşturulan tüm otomatik bilgi notları silinsin mi?(E/H)
+     [Delete all automatic information notes generated for {country}? (Y/N)]
+<
+  Per-source delete commands (each with its own confirmation):
+                                                     *:Dbndelete*  <Leader>dbnd
+     :Dbndelete   Dışişleri Bakanlığı web notları (MFA web notes)
+                                                      *:Wbdelete*  <Leader>wbd
+     :Wbdelete    WorldBank gösterge notları (World Bank indicators)
+                                                    *:Stmddelete*  <Leader>stmdd
+     :Stmddelete  dış ticaret notları (foreign trade figures)
+                                                     *:Tmddelete*  <Leader>tmdd
+     :Tmddelete   ikili ticaret notları (bilateral trade figures)
+                                                    *:Tbupdelete*  <Leader>tbd
+     :Tbupdelete  Ticaret Bakanlığı ülke profil notları (country profile)
+                                                 *:Tubitakdelete*  <Leader>ttd
+     :Tubitakdelete  TÜBİTAK bilgi notları (TÜBİTAK reports)
+                                                  *:Kosgebdelete*  <Leader>tkd
+     :Kosgebdelete  KOSGEB bilgi notları (KOSGEB reports)
+                                                  *:Tuysgmdelete*  <Leader>tyd
+     :Tuysgmdelete  TÜYSGM bilgi notları (TUYSGM reports)
+                                                 *:Otherbndelete*  <Leader>bnd
+     :Otherbndelete  diğer kurum bilgi notları (other institution notes)
+
+Choosing "Hayır" (No) cancels ("Silme iptal edildi" — deletion cancelled).
+If removing the last section empties a per-country OBN page, that page and its
+links in `obn-hub.md` and the dashboard are removed as well.
+
+==============================================================================
+9. NOTE TYPES AND VAULT LAYOUT                          *vim-notebox-note-types*
+
+YAML header ~
+  Every note starts with a YAML block.  Common fields:
+>
+     ---
+     id: 1791269556
+     author: dbscript
+     title: Brunei Genel Siyasi Bilgiler Tablosu
+     date: 06/10/26
+     modify: 12/10/26
+     country: brn
+     institude:
+     n_type: obn dbwn
+     keywords:
+     bibliography: bibfiles/1791269556.bib
+     citation-style: <path>/ieee-with-url.csl
+     toc-title: "İçindekiler"
+     ...
+     ---
+<
+
+n_type classification ~
+  Script-generated notes carry an `obn` (Otomatik Bilgi Notları — Automatic
+  Information Notes) prefix:
+>
+     obn dbwn               MFA web note (content)
+     obn indicatorReport    World Bank indicator note (content)
+     obn singletrade        single-country trade note (content)
+     obn bilateraltrade     bilateral trade note (content)
+     obn tbup               country-profile section note (content)
+     obn tubitak            TÜBİTAK report section note (content)
+     obn kosgeb             KOSGEB report section note (content)
+     obn tuysgm             TUYSGM report section note (content)
+     obn <inst>             other-institution section note (inst = turkpatent,
+                            tse, mtgm, db, tb, tua, tuba, sgm, sbgm, savgm,
+                            atgm, kagm, ...)
+     obn dizin <type>       per-country index of a type
+     hub obn {iso3}         per-country OBN page
+     hub obn genel          global OBN registry (obn-hub.md)
+     hub {iso3}             country dashboard
+     ugh                    general hub (index.md)
+<
+  Manual notes use their own values (`gbn`, `cv`, `yön`, `perm`,
+  `floating`, ...).  `perm` is produced by |:MakePermNote| from an `obn` note.
+
+Vault layout ~
+  <box>/                     note root (flat `<id>.md` notes)
+    index.md                 general hub; links obn-hub.md (ugh)
+    obn-hub.md               registry of per-country OBN pages (hub obn genel)
+    bibfiles/<id>.bib        one bibliography per generated note
+    data/img/maps/<iso3>.png country maps
+    tbupPdfs/                downloaded country-profile PDFs
+    data/<iso3>/gbn/tubitak/ TÜBİTAK "Bilgi Notu" PDFs (source for tubitak)
+    data/<iso3>/gbn/kosgeb/  KOSGEB "Bilgi Notu" DOCX files (source for kosgeb)
+    data/<iso3>/gbn/tuysgm/  TUYSGM "Bilgi Notu" .doc files (source for tuysgm)
+    data/gbns/<inst>/        multi-country institution notes (source for otherbn)
+    pdfs/ , docs/            exported PDF / DOCX files
+
+==============================================================================
+10. EXPORT AND VIEWING                                        *vim-notebox-export*
+
+Buffer-local (Markdown) commands and mappings:
+
+:Viewpdf                *:Viewpdf*      <Leader>v
+  Convert the current note to PDF (pandoc + filters) if needed and open it in
+  zathura.
+
+:Viewdoc                *:Viewdoc*      <Leader>vd
+  Convert to DOCX and open in OnlyOffice.
+
+:Viewpresentation      *:Viewpresentation*   <Leader>vp
+  Convert to a beamer presentation PDF and open it.
+
+:Saveas                 *:Saveas*       <Leader>sa
+  Prompt for type (PDF/DOCX) and output name, convert, and open.
+
+:DeleteCurrentNote      (mapping <Leader>dn)
+  Delete the current note and any associated bibfiles.
+
+==============================================================================
+11. HELPER TOOLS                                             *vim-notebox-helpers*
+
+Markdown combiner (`plugin/markdown_combiner.vim`)
+                                                          *:MarkdownCombine*
+:MarkdownCombine [...]      Combine a note and its linked notes into one
+                            document (strips #BackReferences, merges bib
+                            entries).
+:MarkdownCombineHelp        Show the combiner's own help.
+  Mappings: <Leader>bt (combine interactively), <Leader>bte (keep refs),
+            <Leader>bth (drop refs).
+
+Buffer list in quickfix (`plugin/buffers_with_title.vim`)
+                                                              *:BuffersQf*
+:BuffersQf / :Bq            List open buffers with their note titles.
+  Mapping: <Leader>lst    (press <CR> in the list to open a buffer).
+
+Quickfix toggle (`plugin/qfToggle.vim`)
+                                                               *:QfToggle*
+:QfToggle                   Toggle the quickfix window.
+  Mapping: <Leader>q
+
+==============================================================================
+12. PYTHON CLI REFERENCE                                         *vim-notebox-cli*
+
+The wrapper commands run these scripts (see the wrapper for the exact
+interpreter).  They can also be run directly.
+
+getCountry.py <country> [--skip-stmd] [--skip-tmd] [--skip-tbup]
+              [--skip-tubitak] [--skip-kosgeb] [--skip-tuysgm]
+              [--skip-otherbn] [--delete]
+  Orchestrates all generators for a country.  `--skip-*` omits a step;
+  `--delete` removes the country's auto notes and OBN page.
+
+getDbn.py     <country> [--delete]
+getData.py    <country> [--delete]
+getStmd.py    <country> [--check] [--force] [--delete]
+getTmd.py     <partner> [--check] [--force] [--delete]
+getTbupNotes.py <pdf-or-country-or-iso3> [iso3] [--headings] [--dir DIR]
+               [--refresh] [--download-only] [--yes] [--no-prune] [--check]
+               [--force] [--delete]
+getTubitakNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
+               [--no-prune] [--check] [--force] [--delete]
+getKosgebNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
+               [--no-prune] [--check] [--force] [--delete]
+getTuysgmNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
+               [--no-prune] [--check] [--force] [--delete]
+getOtherBns.py <iso3|country> [--dir DIR] [--inst FOLDER] [--headings]
+               [--yes] [--no-prune] [--check] [--force] [--delete]
+               [--no-dedup] [--dedup-threshold R]
+getMap.py     <country> [--path] [--dry-run] [--force]
+
+Flag notes:
+  --check        report the existing report's age only (no network, no
+                 writes); prints REPORT_EXISTS / AGE_DAYS / AGE_SOURCE /
+                 FRESH / AGE_TEXT lines.
+  --force        ignore the freshness gate and regenerate.
+  --delete       remove the notes this script generated for the country and
+                 update the indexes.
+  --headings     (tbup, tubitak, kosgeb, tuysgm, otherbn) dry run: print the
+                 outline and planned notes.
+  --download-only (tbup) download the PDF and stop.
+  --yes          (tbup, tubitak, kosgeb, tuysgm, otherbn) auto-confirm orphan
+                 deletion / skip prompts.
+  --no-prune     (tbup, tubitak, kosgeb, tuysgm, otherbn) never delete orphan
+                 notes.
+  --dir DIR      (tbup, tubitak, kosgeb, tuysgm, otherbn) alternate source
+                 folder.
+  --inst FOLDER  (otherbn) only process this institute folder.
+  --no-dedup     (otherbn) disable document de-duplication.
+  --dedup-threshold R  (otherbn) near-duplicate similarity threshold (0.90).
+  --path         (map) print the target image path and exit.
+
+==============================================================================
+13. TROUBLESHOOTING                                         *vim-notebox-trouble*
+
+Fetchers fail with import errors ~
+  The scripts use the bundled virtualenv.  Reinstall dependencies (see
+  |vim-notebox-install|) or point the `g:*_python` option at your interpreter.
+
+"No Data" / no report generated ~
+  The source has no data for that country/pair, or the country does not report
+  to Trade Map.  Nothing is written; the old note is kept.
+
+A trade report shows "% Oran" as 0 ~
+  The source's total for that direction is 0; the percentage is shown as 0
+  instead of failing.
+
+Duplicate notes appear ~
+  Usually a code/notes mismatch of `n_type` values.  Regenerate with the
+  current scripts; deletion commands can remove stale duplicates.
+
+Back-links are stale ~
+  Run |:Writeback| in the note, or |:Orphans| for the global list.
+
+:help vim-notebox does not work ~
+  Run `:helptags <plugin>/doc` (see |vim-notebox-install|).
+
+==============================================================================
+14. GLOSSARY                                                 *vim-notebox-glossary*
+
+Turkish UI strings you may see, with English meanings:
+  Otomatik Bilgi Notları (OBN)   Automatic Information Notes
+  Dizin                          index
+  Gösterge                       indicator
+  Dış Ticaret                    foreign trade (single country)
+  İkili Ticaret                  bilateral trade
+  Ülke Profili                   country profile
+  Ülke Künyesi                   country fact sheet (MFA)
+  Evet / Hayır                   Yes / No
+  güncellendi                    updated
+  oluşturuldu                    created
+  N gün önce                     N days ago
+  N günden yeni                  newer than N days
+  yenilenmedi                    not refreshed
+  ATLANDI                        SKIPPED
+  kullanılamadı / bulunamadı     could not be used / not found
+  Silindi                        deleted
+  Güncellendi                    updated
+  Yazıldı                        written
+  silinsin mi?                   should it be deleted?
+  Silme iptal edildi             deletion cancelled
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

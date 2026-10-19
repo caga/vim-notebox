@@ -29,12 +29,24 @@ GENERATORS = [
     ("getStmd.py", []),
     ("getTmd.py", []),
     ("getTbupNotes.py", ["--yes"]),
+    ("getTubitakNotes.py", ["--yes"]),
+    ("getKosgebNotes.py", ["--yes"]),
+    ("getTuysgmNotes.py", ["--yes"]),
+    ("getOtherBns.py", ["--yes"]),
 ]
 MAP_SCRIPT = "getMap.py"
 
 NO_DATA_CODE = 2
 
 MAP_HEIGHT = int(os.environ.get("NOTES_MAP_HEIGHT", "350"))
+
+# vim tarafindan gonderilen atlama bayraklari -> script adi
+SKIP_FLAGS = {"--skip-stmd": "getStmd.py", "--skip-tmd": "getTmd.py",
+              "--skip-tbup": "getTbupNotes.py",
+              "--skip-tubitak": "getTubitakNotes.py",
+              "--skip-kosgeb": "getKosgebNotes.py",
+              "--skip-tuysgm": "getTuysgmNotes.py",
+              "--skip-otherbn": "getOtherBns.py"}
 
 
 def _status_label(code):
@@ -75,7 +87,7 @@ def _run(script, args, env):
     return out, code
 
 
-def _summary(statuses):
+def _summary(statuses, skipped=()):
     """(sert hatalar, veri-yok adımları, etiketli özet satırları) döner."""
     hard = [(script, code) for script, code in statuses if code != 0
             and code != NO_DATA_CODE]
@@ -89,15 +101,26 @@ def _summary(statuses):
         else:
             label = "[HATA]"
         lines.append(f"{label} {script} (kod {code})")
+    for script in skipped:
+        lines.append(f"[ATLANDI] {script}")
     return hard, nodata, lines
 
 
 def run():
-    arg = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "TUR"
+    flags, positional = set(), []
+    for a in sys.argv[1:]:
+        if a.startswith("--"):
+            flags.add(a)
+        else:
+            positional.append(a)
+    arg = " ".join(positional) if positional else "TUR"
+    skip = {SKIP_FLAGS[f] for f in flags if f in SKIP_FLAGS}
     iso3, display, country_field = nb.resolve_country(arg)
     if not iso3:
         print(f"HATA getCountry: Ülke ISO3 kodu çözülemedi: {arg}")
         return 1
+    if "--delete" in flags:
+        return nb.delete_country_obn(iso3, country_field, display)
     print(f"Ülke: {display} ({iso3})")
 
     notes = nb.notes_dir()
@@ -109,8 +132,13 @@ def run():
     env.setdefault("TBUP_PDF_DIR", os.path.join(notes, "tbupPdfs"))
 
     statuses = []
+    skipped = []
     indices = []
     for script, extra in GENERATORS:
+        if script in skip:
+            print(f"=== {script} (ATLANDI) ===", flush=True)
+            skipped.append(script)
+            continue
         out, code = _run(script, [iso3] + extra, env)
         statuses.append((script, code))
         idx = _extract(out, "INDEX: ")
@@ -131,7 +159,7 @@ def run():
     elif not hub:
         print("UYARI ülke hub'ı yok; harita yerleştirilmedi")
 
-    hard, nodata, lines = _summary(statuses)
+    hard, nodata, lines = _summary(statuses, skipped)
 
     print("=== Özet ===")
     for line in lines:
