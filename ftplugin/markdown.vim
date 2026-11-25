@@ -60,7 +60,7 @@ def Convert2Pdf(mdfile: string, pdffile: string): string
 	CreatePdfDirectory()
 
 	if IsNewerFile(mdfile, pdffile) == 1
-		var res = system($"pandoc -f markdown -t pdf {mdfile} -o {pdffile} --filter pandoc-plot --filter pandoc-crossref --lua-filter $HOME/.bin/links-to-pdf.lua --citeproc")
+		var res = system($"pandoc -f markdown -t pdf {mdfile} -o {pdffile} --filter pandoc-plot --filter pandoc-crossref --lua-filter {plugindir}/plugin/scripts/mermaid-figures.lua --lua-filter $HOME/.bin/links-to-pdf.lua --table-caption-position=below --figure-caption-position=below --citeproc")
 		
 		echom "Doing the convertion"
 		echom res
@@ -76,7 +76,7 @@ def Convert2Presentation(mdfile: string, pdffile: string): string
 	CreatePdfDirectory()
 
 	if IsNewerFile(mdfile, pdffile) == 1
-		var res = system($"pandoc -f markdown -t beamer {mdfile} -V theme:Warsaw -o {pdffile} --template eisvogel --filter pandoc-plot --filter pandoc-crossref --lua-filter $HOME/.bin/links-to-pdf.lua --citeproc")
+		var res = system($"pandoc -f markdown -t beamer {mdfile} -V theme:Warsaw -o {pdffile} --template eisvogel --filter pandoc-plot --filter pandoc-crossref --lua-filter {plugindir}/plugin/scripts/mermaid-figures.lua --lua-filter $HOME/.bin/links-to-pdf.lua --table-caption-position=below --figure-caption-position=below --citeproc")
 		
 		echom "Doing the convertion-Presentation"
 		echom res
@@ -92,8 +92,8 @@ def Convert2Doc(mdfile: string, docfile: string): string
 	if IsNewerFile(mdfile, docfile) == 1
 #		var res = system($"pandoc -f markdown+implicit_figures -t docx {mdfile} -o {docfile} --filter mermaid-filter --filter $HOME/.bin/pandoc-crossref --citeproc --reference-doc={plugindir}/ftplugin/pandocOrjRef.docx")
 	#	var res = system($"pandoc -f markdown+implicit_figures+table_captions -t odt {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --citeproc --reference-doc={plugindir}/ftplugin/referenceOdt.odt")
-		#var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.docx")
-		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --citeproc --reference-doc={plugindir}/ftplugin/yeni-reference.docx")
+		#var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter {plugindir}/plugin/scripts/mermaid-figures.lua --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --table-caption-position=below --figure-caption-position=below --citeproc --reference-doc={plugindir}/ftplugin/custom-reference.docx")
+		var res = system($"pandoc -f markdown+implicit_figures+table_captions -t docx {mdfile} -o {docfile} --filter pandoc-plot --filter pandoc-crossref  --lua-filter {plugindir}/plugin/scripts/mermaid-figures.lua --lua-filter $HOME/.bin/links-to-pdf.lua --lua-filter $HOME/.bin/table-border.lua --table-caption-position=below --figure-caption-position=below --citeproc --reference-doc={plugindir}/ftplugin/yeni-reference.docx")
 		echom "Doing the convertion"
 		echom res
 		return res

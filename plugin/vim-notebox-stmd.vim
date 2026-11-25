@@ -1,7 +1,14 @@
 vim9script
-# vim-notebox icin getStmd.py (tek ulke dis ticaret raporu) entegrasyonu.
+import autoload 'notebox.vim'
+
+# vim-notebox icin getUlkeTrapor.py (tek ulke dis ticaret raporu) entegrasyonu.
 # Aktif not kutusunda (g:notes_directory) bir ulkenin Trade Map dis ticaret
-# raporu notunu uretir, ulke ticaret indeksini gunceller ve indeksi acar.
+# raporunu iki not olarak uretir:
+#   "<Ulke> Dis Ticaret Rakamlari"          (5 tablo)
+#   "<Ulke> Dis Ticaret Rakamlari -Sekilli" (tablolar + mermaid grafikleri)
+# Ulke ticaret indeksini gunceller ve indeksi acar.
+# Yil istege baglidir: :Stmdfetch Yeni Zelanda
+# Yil verilmezse iki akista da veri bulunan en yeni yil kullanilir.
 # Rapor tazelik kontrolu: g:country_report_check / ask / max_age_days.
 
 var stmddir = expand('<sfile>:p:h') .. '/scripts'
@@ -11,7 +18,11 @@ if !exists('g:stmd_python')
 endif
 
 if !exists('g:stmd_script')
-	g:stmd_script = stmddir .. '/getStmd.py'
+	g:stmd_script = stmddir .. '/getUlkeTrapor.py'
+endif
+
+if !exists('g:tradeapp_dir')
+	g:tradeapp_dir = '~/calisma/tmapp'
 endif
 
 
@@ -30,14 +41,28 @@ def ParseReport(out: list<string>): dict<any>
 enddef
 
 
+# "Yeni Zelanda 2025" -> ["Yeni Zelanda", "2025"]; yil yoksa ikinci oge ''.
+def SplitYear(args: string): list<string>
+	return notebox.SplitYear(args)
+enddef
+
+
 def g:StmdFetch(country: string)
-	var name = country
+	var parsed = SplitYear(country)
+	var name = parsed[0]
+	var year = parsed[1]
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getUlkeTrapor.py'))
 	endif
 	if name == ''
 		return
 	endif
+	if year != '' && year !~ '^\d\{4}$'
+		echom notebox.Label('getUlkeTrapor.py')
+			.. ' — yıl 4 haneli olmalı (ör. 2025): ' .. year
+		return
+	endif
+	var year_arg = year == '' ? '' : ' ' .. shellescape(year)
 
 	if !exists('g:notes_directory') || g:notes_directory == ''
 		g:notes_directory = '~/notes'
@@ -51,23 +76,29 @@ def g:StmdFetch(country: string)
 	$NOTES_BIB_DIR = box .. '/bibfiles'
 	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
 	$NOTES_REPORT_MAX_AGE_DAYS = string(get(g:, 'country_report_max_age_days', 7))
+	$TRADEAPP_DIR = expand(g:tradeapp_dir)
 
 	if get(g:, 'country_report_check', 1) != 0
+		notebox.Checking('getUlkeTrapor.py')
 		var chk = systemlist('cd ' .. shellescape(box)
 			.. ' && ' .. shellescape(g:stmd_python)
 			.. ' ' .. shellescape(g:stmd_script)
-			.. ' ' .. shellescape(name) .. ' --check')
+			.. ' ' .. shellescape(name) .. year_arg
+			.. ' --check')
 		var r = ParseReport(chk)
 		if r.exists != ''
 			if r.fresh == 1
-				echom 'Taze rapor, yenilenmedi: ' .. r.text
+				echom notebox.Label('getUlkeTrapor.py')
+					.. ' — taze rapor, yenilenmedi: ' .. r.text
 				execute 'edit ' .. fnameescape(r.exists)
 				return
 			endif
 			if get(g:, 'country_report_ask', 1) != 0
-				if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+				if confirm(notebox.Label('getUlkeTrapor.py') .. "\n" .. r.text
+					.. "\nYeni rapor oluşturulsun mu?",
 					"&Evet\n&Hayır", 2) != 1
-					echom 'Rapor yenilenmedi: ' .. r.text
+					echom notebox.Label('getUlkeTrapor.py')
+						.. ' — rapor yenilenmedi: ' .. r.text
 					execute 'edit ' .. fnameescape(r.exists)
 					return
 				endif
@@ -78,7 +109,9 @@ def g:StmdFetch(country: string)
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(g:stmd_python)
 		.. ' ' .. shellescape(g:stmd_script)
-		.. ' ' .. shellescape(name) .. ' --force'
+		.. ' ' .. shellescape(name) .. year_arg .. ' --force'
+	var subject = year == '' ? name : name .. ' (' .. year .. ')'
+	notebox.Busy('getUlkeTrapor.py', subject)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 
@@ -98,7 +131,7 @@ enddef
 def g:StmdDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getUlkeTrapor.py'))
 	endif
 	if name == ''
 		return
@@ -113,8 +146,9 @@ def g:StmdDelete(country: string)
 	$NOTES_DIR = box
 	$NOTES_BIB_DIR = box .. '/bibfiles'
 	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
-	if confirm(name .. ' için oluşturulan dış ticaret notları silinsin mi?(E/H)',
-		"&Evet\n&Hayır", 2) != 1
+	$TRADEAPP_DIR = expand(g:tradeapp_dir)
+	if confirm(name .. ' için oluşturulan dış ticaret notları '
+		.. '(tablo + şekilli) silinsin mi?(E/H)', "&Evet\n&Hayır", 2) != 1
 		echom 'Silme iptal edildi'
 		return
 	endif

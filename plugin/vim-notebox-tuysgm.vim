@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getTuysgmNotes.py entegrasyonu (asenkron).
 # Bir ulke icin TUYSGM "Bilgi Notu" .doc dosyalarini
 # (data/{iso3}/gbn/tuysgm) notlara cevirir, notlari ulke tuysgm hub'ina
@@ -40,6 +42,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -79,12 +82,14 @@ def ExitCb(_j: job, status: number)
 		endif
 		execute 'edit ' .. fnameescape(target)
 		if status != 0
-			echom 'Tuysgmfetch tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
+			echom notebox.Label('getTuysgmNotes.py')
+				.. ' — tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
 		else
-			echom 'Tuysgmfetch tamamlandı'
+			echom notebox.Label('getTuysgmNotes.py') .. ' — tamamlandı'
 		endif
 	else
-		echom 'Tuysgmfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getTuysgmNotes.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -113,19 +118,21 @@ def GateTuysgm(box: string, name: string): dict<any>
 		.. ' && ' .. shellescape(expand(g:tuysgm_python))
 		.. ' ' .. shellescape(expand(g:tuysgm_script))
 		.. ' ' .. shellescape(name) .. ' --check'
+	notebox.Checking('getTuysgmNotes.py')
 	var r = ParseReport(systemlist(cmd))
 	if r.exists == ''
 		return {run: true, target: ''}
 	endif
 	if r.fresh == 1
-		echom 'tuysgm atlandı: ' .. r.text .. ' ('
+		echom notebox.Label('getTuysgmNotes.py') .. ' atlandı: ' .. r.text .. ' ('
 			.. get(g:, 'tuysgm_report_max_age_days', 30) .. ' günden yeni)'
 		return {run: false, target: r.exists}
 	endif
 	if get(g:, 'tuysgm_report_ask', 1) != 0
-		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+		if confirm(notebox.Label('getTuysgmNotes.py') .. "\n" .. r.text
+			.. "\nYeni rapor oluşturulsun mu?",
 			"&Evet\n&Hayır", 2) != 1
-			echom 'tuysgm atlandı: ' .. r.text
+			echom notebox.Label('getTuysgmNotes.py') .. ' atlandı: ' .. r.text
 			return {run: false, target: r.exists}
 		endif
 	endif
@@ -159,6 +166,7 @@ def SyncRun(box: string, name: string)
 		.. ' && ' .. shellescape(expand(g:tuysgm_python))
 		.. ' ' .. shellescape(expand(g:tuysgm_script))
 		.. ' --yes --force ' .. shellescape(name)
+	notebox.Busy('getTuysgmNotes.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -173,13 +181,13 @@ enddef
 
 def g:TuysgmFetch(country: string)
 	if s_running
-		echom 'Tuysgmfetch zaten çalışıyor'
+		echom notebox.Label('getTuysgmNotes.py') .. ' zaten çalışıyor'
 		return
 	endif
 
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getTuysgmNotes.py'))
 	endif
 	if name == ''
 		return
@@ -216,7 +224,7 @@ def g:TuysgmFetch(country: string)
 	silent! file [Tuysgmfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Tuysgmfetch başladı (arka planda)...'
+	notebox.Busy('getTuysgmNotes.py', name)
 
 	var cmd: list<string> = [expand(g:tuysgm_python), expand(g:tuysgm_script),
 		'--yes', '--force', name]
@@ -228,7 +236,7 @@ enddef
 def g:TuysgmDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getTuysgmNotes.py'))
 	endif
 	if name == ''
 		return

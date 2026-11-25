@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getOtherBns.py entegrasyonu (asenkron).
 # Bir ulke icin "diger" kurum bilgi notu belgelerini
 # (data/gbns) tarar, ulkeye iliskin bolumleri ayirir, kurum bazli
@@ -40,6 +42,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -79,12 +82,14 @@ def ExitCb(_j: job, status: number)
 		endif
 		execute 'edit ' .. fnameescape(target)
 		if status != 0
-			echom 'Otherbnfetch tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
+			echom notebox.Label('getOtherBns.py')
+				.. ' — tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
 		else
-			echom 'Otherbnfetch tamamlandı'
+			echom notebox.Label('getOtherBns.py') .. ' — tamamlandı'
 		endif
 	else
-		echom 'Otherbnfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getOtherBns.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -113,19 +118,21 @@ def GateOtherbn(box: string, name: string): dict<any>
 		.. ' && ' .. shellescape(expand(g:otherbn_python))
 		.. ' ' .. shellescape(expand(g:otherbn_script))
 		.. ' ' .. shellescape(name) .. ' --check'
+	notebox.Checking('getOtherBns.py')
 	var r = ParseReport(systemlist(cmd))
 	if r.exists == ''
 		return {run: true, target: ''}
 	endif
 	if r.fresh == 1
-		echom 'otherbn atlandı: ' .. r.text .. ' ('
+		echom notebox.Label('getOtherBns.py') .. ' atlandı: ' .. r.text .. ' ('
 			.. get(g:, 'otherbn_report_max_age_days', 30) .. ' günden yeni)'
 		return {run: false, target: r.exists}
 	endif
 	if get(g:, 'otherbn_report_ask', 1) != 0
-		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+		if confirm(notebox.Label('getOtherBns.py') .. "\n" .. r.text
+			.. "\nYeni rapor oluşturulsun mu?",
 			"&Evet\n&Hayır", 2) != 1
-			echom 'otherbn atlandı: ' .. r.text
+			echom notebox.Label('getOtherBns.py') .. ' atlandı: ' .. r.text
 			return {run: false, target: r.exists}
 		endif
 	endif
@@ -159,6 +166,7 @@ def SyncRun(box: string, name: string)
 		.. ' && ' .. shellescape(expand(g:otherbn_python))
 		.. ' ' .. shellescape(expand(g:otherbn_script))
 		.. ' --yes --force ' .. shellescape(name)
+	notebox.Busy('getOtherBns.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -173,13 +181,13 @@ enddef
 
 def g:OtherbnFetch(country: string)
 	if s_running
-		echom 'Otherbnfetch zaten çalışıyor'
+		echom notebox.Label('getOtherBns.py') .. ' zaten çalışıyor'
 		return
 	endif
 
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getOtherBns.py'))
 	endif
 	if name == ''
 		return
@@ -216,7 +224,7 @@ def g:OtherbnFetch(country: string)
 	silent! file [Otherbnfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Otherbnfetch başladı (arka planda)...'
+	notebox.Busy('getOtherBns.py', name)
 
 	var cmd: list<string> = [expand(g:otherbn_python), expand(g:otherbn_script),
 		'--yes', '--force', name]
@@ -228,7 +236,7 @@ enddef
 def g:OtherbnDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getOtherBns.py'))
 	endif
 	if name == ''
 		return

@@ -57,6 +57,11 @@ if !exists("g:country_report_max_age_days")
 	g:country_report_max_age_days = 7
 endif
 
+# Rapor tazelik kontrolu (getLeaders) - ayri esik
+if !exists("g:leaders_report_max_age_days")
+	g:leaders_report_max_age_days = 30
+endif
+
 # Rapor tazelik kontrolu (getTbupNotes) - ayri esik
 if !exists("g:tbup_report_check")
 	g:tbup_report_check = 1

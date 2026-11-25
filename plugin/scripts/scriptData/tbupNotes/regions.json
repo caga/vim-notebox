@@ -1,5 +1,6 @@
 {
- "generated": "2026-10-19T09:51:05",
+ "version": 2,
+ "generated": "2026-11-19T14:20:39",
  "regions": [
   "afrika",
   "avrupa",
@@ -114,6 +115,11 @@
    "region": "afrika",
    "slug": "kamerun",
    "display": "Kamerun"
+  },
+  "kenya": {
+   "region": "afrika",
+   "slug": "Kenya",
+   "display": "Kenya"
   },
   "kongo": {
    "region": "afrika",
@@ -350,6 +356,11 @@
    "slug": "izlanda",
    "display": "İzlanda"
   },
+  "karadag": {
+   "region": "avrupa",
+   "slug": "karadağ",
+   "display": "Karadağ"
+  },
   "kosova": {
    "region": "avrupa",
    "slug": "kosova",
@@ -420,6 +431,11 @@
    "slug": "rusya-federasyonu",
    "display": "Rusya"
   },
+  "sirbistan": {
+   "region": "avrupa",
+   "slug": "sırbistan",
+   "display": "Sırbistan"
+  },
   "slovakya": {
    "region": "avrupa",
    "slug": "slovakya",
@@ -444,6 +460,11 @@
    "region": "avustralya",
    "slug": "yeni-zelanda",
    "display": "Yeni Zelanda"
+  },
+  "avustralya": {
+   "region": "avustralya",
+   "slug": "avustralya",
+   "display": "Avustralya"
   },
   "cinhalkcumhuriyeti": {
    "region": "dogu-asya",
@@ -549,6 +570,11 @@
    "region": "guney-asya",
    "slug": "pakistan",
    "display": "Pakistan"
+  },
+  "srilanka": {
+   "region": "guney-asya",
+   "slug": "sri-Lanka",
+   "display": "Sri Lanka"
   },
   "endonezya": {
    "region": "guney-dogu-asya",
@@ -689,6 +715,11 @@
    "region": "orta-dogu-ve-korfez",
    "slug": "kuveyt",
    "display": "Kuveyt"
+  },
+  "kuzeykibristc": {
+   "region": "orta-dogu-ve-korfez",
+   "slug": "KKTC",
+   "display": "Kuzey Kıbrıs T.C"
   },
   "lubnan": {
    "region": "orta-dogu-ve-korfez",

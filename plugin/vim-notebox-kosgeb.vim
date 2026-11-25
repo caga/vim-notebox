@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getKosgebNotes.py entegrasyonu (asenkron).
 # Bir ulke icin KOSGEB "Bilgi Notu" DOCX'lerini
 # (data/{iso3}/gbn/kosgeb) notlara cevirir, notlari ulke kosgeb hub'ina
@@ -40,6 +42,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -79,12 +82,14 @@ def ExitCb(_j: job, status: number)
 		endif
 		execute 'edit ' .. fnameescape(target)
 		if status != 0
-			echom 'Kosgebfetch tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
+			echom notebox.Label('getKosgebNotes.py')
+				.. ' — tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
 		else
-			echom 'Kosgebfetch tamamlandı'
+			echom notebox.Label('getKosgebNotes.py') .. ' — tamamlandı'
 		endif
 	else
-		echom 'Kosgebfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getKosgebNotes.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -113,19 +118,21 @@ def GateKosgeb(box: string, name: string): dict<any>
 		.. ' && ' .. shellescape(expand(g:kosgeb_python))
 		.. ' ' .. shellescape(expand(g:kosgeb_script))
 		.. ' ' .. shellescape(name) .. ' --check'
+	notebox.Checking('getKosgebNotes.py')
 	var r = ParseReport(systemlist(cmd))
 	if r.exists == ''
 		return {run: true, target: ''}
 	endif
 	if r.fresh == 1
-		echom 'kosgeb atlandı: ' .. r.text .. ' ('
+		echom notebox.Label('getKosgebNotes.py') .. ' atlandı: ' .. r.text .. ' ('
 			.. get(g:, 'kosgeb_report_max_age_days', 30) .. ' günden yeni)'
 		return {run: false, target: r.exists}
 	endif
 	if get(g:, 'kosgeb_report_ask', 1) != 0
-		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+		if confirm(notebox.Label('getKosgebNotes.py') .. "\n" .. r.text
+			.. "\nYeni rapor oluşturulsun mu?",
 			"&Evet\n&Hayır", 2) != 1
-			echom 'kosgeb atlandı: ' .. r.text
+			echom notebox.Label('getKosgebNotes.py') .. ' atlandı: ' .. r.text
 			return {run: false, target: r.exists}
 		endif
 	endif
@@ -159,6 +166,7 @@ def SyncRun(box: string, name: string)
 		.. ' && ' .. shellescape(expand(g:kosgeb_python))
 		.. ' ' .. shellescape(expand(g:kosgeb_script))
 		.. ' --yes --force ' .. shellescape(name)
+	notebox.Busy('getKosgebNotes.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -173,13 +181,13 @@ enddef
 
 def g:KosgebFetch(country: string)
 	if s_running
-		echom 'Kosgebfetch zaten çalışıyor'
+		echom notebox.Label('getKosgebNotes.py') .. ' zaten çalışıyor'
 		return
 	endif
 
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getKosgebNotes.py'))
 	endif
 	if name == ''
 		return
@@ -216,7 +224,7 @@ def g:KosgebFetch(country: string)
 	silent! file [Kosgebfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Kosgebfetch başladı (arka planda)...'
+	notebox.Busy('getKosgebNotes.py', name)
 
 	var cmd: list<string> = [expand(g:kosgeb_python), expand(g:kosgeb_script),
 		'--yes', '--force', name]
@@ -228,7 +236,7 @@ enddef
 def g:KosgebDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getKosgebNotes.py'))
 	endif
 	if name == ''
 		return

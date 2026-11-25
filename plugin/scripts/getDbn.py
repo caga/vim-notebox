@@ -4,10 +4,14 @@
 standart not formatinda markdown dosyalari uretir.
 
 Kullanim:
-    python getDbn.py NZL
-    python getDbn.py "Yeni Zelanda"
-    python getDbn.py Yeni Zelanda
-    python getDbn.py Almanya
+    ./getDbn.py NZL
+    ./getDbn.py "Yeni Zelanda"
+    ./getDbn.py Yeni Zelanda --box ~/countryNotes
+    ./getDbn.py Almanya
+
+Secenekler:
+    --box DIR   not kutusu (varsayilan: $NOTES_DIR veya cwd)
+    --delete    ulkenin Disisleri Bakanligi web notlarini sil
 """
 
 import datetime as dt
@@ -15,6 +19,10 @@ import json
 import os
 import re
 import sys
+
+import _cli
+
+_cli.init()
 
 import requests
 from bs4 import BeautifulSoup, NavigableString
@@ -105,7 +113,7 @@ for _name in lu.countryNames:
 def fetch_soup(session, url):
     if not url.startswith("http"):
         url = BASE + url
-    resp = session.get(url, headers=HEADERS, timeout=45)
+    resp = nb.http_get(url, headers=HEADERS, timeout=45, session=session)
     return BeautifulSoup(resp.text, "html.parser")
 
 
@@ -232,7 +240,7 @@ def mechanical_relations_url(name):
 def fetch_page(session, url):
     if not url.startswith("http"):
         url = BASE + url
-    resp = session.get(url, headers=HEADERS, timeout=45)
+    resp = nb.http_get(url, headers=HEADERS, timeout=45, session=session)
     return BeautifulSoup(resp.text, "html.parser"), resp.url
 
 

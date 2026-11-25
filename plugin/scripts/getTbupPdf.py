@@ -15,13 +15,18 @@ Site flow:
           /{country}/ulke-profili                       (profile tab)
             <a href=".../data/.../XXX Ulke Profili_2026.pdf">
 
+The profile link is read from the country page instead of being constructed:
+the site sometimes uses a different region segment there (for Australia the
+listing region is "avustralya" but the profile link is under "avusturalya").
+
 Configuration (environment variables):
-    TBUP_PDF_DIR   download folder (default: tbupPdfs, relative to CWD)
+    TBUP_PDF_DIR   download folder (default: <notes>/tbupPdfs)
+    NOTES_DIR      note box used to derive the default download folder
     TBUP_CACHE     region/country map cache JSON
                    (default: <scriptdir>/scriptData/tbupNotes/regions.json)
 
 Usage:
-    getTbupPdf.py <country|iso3> [--dir DIR] [--refresh]
+    ./getTbupPdf.py <country|iso3> [--dir DIR] [--box DIR] [--refresh]
 """
 
 import argparse
@@ -31,13 +36,19 @@ import json
 import os
 import re
 import sys
-from urllib.parse import quote, urlsplit, urlunsplit
+import time
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+import _cli
+
+if __name__ == "__main__":
+    _cli.init(help=False)
 
 import requests
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import cnlook as lu  # noqa: E402
+import cnlook as lu
+import notebox as nb
 
 BASE = "https://ticaret.gov.tr"
 ROOT = BASE + "/yurtdisi-teskilati"
@@ -45,9 +56,22 @@ BASE_HOST = "ticaret.gov.tr"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 TIMEOUT = 45
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 DEFAULT_CACHE = os.path.join(SCRIPT_DIR, "scriptData", "tbupNotes", "regions.json")
-DEFAULT_PDF_DIR = os.environ.get("TBUP_PDF_DIR", "tbupPdfs")
+CACHE_VERSION = 2
+
+
+def default_pdf_dir():
+    """Default download folder: $TBUP_PDF_DIR or <notes box>/tbupPdfs.
+
+    NOTES_DIR is set by --box in the entry scripts, by the Vim wrappers, or
+    comes from the environment; the cwd is the last-resort fallback.
+    """
+    explicit = os.environ.get("TBUP_PDF_DIR")
+    if explicit:
+        return explicit
+    notes = os.environ.get("NOTES_DIR") or os.getcwd()
+    return os.path.join(notes, "tbupPdfs")
 
 # Region slugs, in the order they appear on the main page.
 REGIONS = [
@@ -86,6 +110,31 @@ ALIASES = {
     "Çekya": "CZE",
 }
 
+# The TBUP site sometimes uses a different display name from cnlook.  These
+# normalized aliases map the user/cnlook key to the key stored in
+# regions.json.  Without them, e.g. "Çin" or "Ekvador" is in the cache but
+# cannot be reached by its ISO3 code or standard Turkish name.
+SITE_ALIASES = {
+    "amerikabirlesikdevletleri": "abd",
+    "abd": "abd",
+    "usa": "abd",
+    "cin": "cinhalkcumhuriyeti",
+    "chn": "cinhalkcumhuriyeti",
+    "ekvador": "ekvator",
+    "ecu": "ekvator",
+    "guneyafrika": "guneyafrikacumhuriyeti",
+    "zaf": "guneyafrikacumhuriyeti",
+    "guneykore": "guneykorecumhuriyeti",
+    "korecumhuriyeti": "guneykorecumhuriyeti",
+    "kor": "guneykorecumhuriyeti",
+    "liechtenstein": "lihtenstayn",
+    "lie": "lihtenstayn",
+    "mauritius": "morityus",
+    "mus": "morityus",
+    "kktc": "kuzeykibristc",
+    "kuzeykibris": "kuzeykibristc",
+}
+
 
 # --------------------------------------------------------------------- helpers
 
@@ -113,7 +162,7 @@ def cache_path():
 
 
 def _get(url):
-    response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    response = nb.http_get(url, headers=HEADERS, timeout=TIMEOUT)
     response.raise_for_status()
     response.encoding = response.apparent_encoding or "utf-8"
     return response.text
@@ -140,38 +189,78 @@ def _encode_url(url):
 def build_country_map(refresh=False):
     """Return {norm_country_name: {region, slug, display}}, cached to JSON."""
     path = cache_path()
-    if not refresh and os.path.exists(path):
+    existing_countries = {}
+    if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
-            if data.get("countries"):
-                return data["countries"]
+            existing_countries = data.get("countries") or {}
+            if (not refresh and data.get("version") == CACHE_VERSION
+                    and existing_countries):
+                return existing_countries
         except (OSError, ValueError):
-            pass
+            existing_countries = {}
 
     countries = {}
+    failed = []
     for region in REGIONS:
-        try:
-            soup = BeautifulSoup(_get(f"{ROOT}/{region}"), "html.parser")
-        except requests.RequestException as exc:
-            print(f"UYARI {region} bölgesi alınamadı: {exc}")
+        soup = None
+        last_exc = None
+        for attempt in range(2):
+            try:
+                soup = BeautifulSoup(_get(f"{ROOT}/{region}"), "html.parser")
+                break
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt == 0:
+                    time.sleep(1)
+        if soup is None:
+            print(f"UYARI {region} bölgesi alınamadı: {last_exc}")
+            failed.append(region)
             continue
+
+        # Slugs are not always lowercase/ASCII: Sri Lanka is "sri-Lanka",
+        # Kenya is "Kenya", KKTC is "KKTC", Karadağ is "karadağ", Sırbistan
+        # is "sırbistan".  Keep the original slug because the site URLs are
+        # case-sensitive; decode percent-encoded Turkish characters.
         pattern = re.compile(
-            rf"^/yurtdisi-teskilati/{re.escape(region)}/([a-z0-9-]+)/?$")
+            rf"^/yurtdisi-teskilati/{re.escape(region)}/([^/?#]+)/?$",
+            re.IGNORECASE)
         for a in soup.find_all("a", href=True):
-            match = pattern.match(a["href"])
+            href_path = urlsplit(_abs_url(a["href"])).path
+            match = pattern.match(href_path)
             if not match:
                 continue
-            slug = match.group(1)
+            slug = unquote(match.group(1))
             display = clean(a.get_text())
             key = norm_name(display)
-            if not key or key in countries or slug == region:
+            # Do not skip slug == region: Australia's country page is
+            # /yurtdisi-teskilati/avustralya/avustralya.  The region root
+            # link (without a slug segment) does not match `pattern` anyway.
+            if not key or key in countries:
                 continue
             countries[key] = {"region": region, "slug": slug,
                               "display": display}
 
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    payload = {"generated": dt.datetime.now().isoformat(timespec="seconds"),
+    if not countries:
+        print("UYARI ülke haritası boş; önbellek yazılmadı")
+        return existing_countries
+
+    if failed:
+        # Do not replace a usable cache with a partial map when a region
+        # request fails.  Keep previously known countries for failed regions
+        # in the returned map, and retry the download on the next call.
+        print(f"UYARI {len(failed)} bölge alınamadı; önbellek yazılmadı: "
+              f"{', '.join(failed)}")
+        merged = dict(existing_countries)
+        merged.update(countries)
+        return merged
+
+    cache_dir = os.path.dirname(path)
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+    payload = {"version": CACHE_VERSION,
+               "generated": dt.datetime.now().isoformat(timespec="seconds"),
                "regions": REGIONS, "countries": countries}
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
@@ -202,19 +291,29 @@ def resolve_country(arg):
     return None, arg, norm_name(arg)
 
 
+def _lookup_country(countries, display, key, raw):
+    """Look up a country by name key, site alias, or slug."""
+    entry = countries.get(key) or countries.get(norm_name(display))
+    wanted = norm_name(raw)
+    if entry is None and wanted:
+        alias = SITE_ALIASES.get(wanted)
+        if alias:
+            entry = countries.get(alias)
+    if entry is None and wanted:
+        for cand in countries.values():
+            if norm_name(cand["slug"]) == wanted:
+                return cand
+    return entry
+
+
 def find_country(country, refresh=False):
     """Return the map entry {region, slug, display} for a country, or None."""
-    iso3, display, key = resolve_country(country)
+    _iso3, display, key = resolve_country(country)
     countries = build_country_map(refresh)
-    entry = countries.get(key) or countries.get(norm_name(display))
-    if entry is None:
-        for cand in countries.values():
-            if cand["slug"] == clean(country).lower():
-                entry = cand
-                break
+    entry = _lookup_country(countries, display, key, country)
     if entry is None and not refresh:
         countries = build_country_map(refresh=True)
-        entry = countries.get(key) or countries.get(norm_name(display))
+        entry = _lookup_country(countries, display, key, country)
     return entry
 
 
@@ -225,8 +324,22 @@ def find_profile_url(country, refresh=False):
     entry = find_country(country, refresh)
     if not entry:
         return None
-    page_url = f"{ROOT}/{entry['region']}/{entry['slug']}/ulke-profili"
-    soup = BeautifulSoup(_get(page_url), "html.parser")
+
+    # Follow the site's own "Ülke Profili" link.  The region segment in that
+    # link is not always the same as the listing region: for Australia the
+    # country page is /avustralya/avustralya but the profile link is
+    # /avusturalya/avustralya/ulke-profili.
+    country_url = f"{ROOT}/{entry['region']}/{entry['slug']}"
+    soup = BeautifulSoup(_get(country_url), "html.parser")
+    profile_url = None
+    for a in soup.find_all("a", href=True):
+        href = _abs_url(a["href"])
+        if "ulke-profili" in href:
+            profile_url = href
+            break
+    if not profile_url:
+        profile_url = f"{ROOT}/{entry['region']}/{entry['slug']}/ulke-profili"
+    soup = BeautifulSoup(_get(profile_url), "html.parser")
 
     candidates = []
     for a in soup.find_all("a", href=True):
@@ -264,7 +377,7 @@ def safe_filename(name):
 
 def find_local_pdf(country, dest_dir=None):
     """Return a previously downloaded PDF for the country, or None."""
-    dest_dir = dest_dir or DEFAULT_PDF_DIR
+    dest_dir = dest_dir or default_pdf_dir()
     if not os.path.isdir(dest_dir):
         return None
     _, display, _ = resolve_country(country)
@@ -287,7 +400,7 @@ def download_tbup_pdf_info(country, dest_dir=None, refresh=False):
     Returns {"path", "url", "filename"} on success, or None. If the site is
     unreachable but a local copy exists, the local copy is used (url=None).
     """
-    dest_dir = dest_dir or DEFAULT_PDF_DIR
+    dest_dir = dest_dir or default_pdf_dir()
     try:
         found = find_profile_url(country, refresh)
     except requests.RequestException as exc:
@@ -308,15 +421,9 @@ def download_tbup_pdf_info(country, dest_dir=None, refresh=False):
     if os.path.exists(path) and os.path.getsize(path) > 0:
         print(f"Zaten mevcut: {path}")
         return {"path": path, "url": url, "filename": filename}
-    try:
-        response = requests.get(_encode_url(url), headers=HEADERS, stream=True,
-                                timeout=TIMEOUT)
-        response.raise_for_status()
-        with open(path, "wb") as fh:
-            for chunk in response.iter_content(chunk_size=65536):
-                if chunk:
-                    fh.write(chunk)
-    except requests.RequestException as exc:
+    ok, exc, _tries = nb.http_download(_encode_url(url), path,
+                                       headers=HEADERS, timeout=TIMEOUT)
+    if not ok:
         print(f"UYARI PDF indirilemedi: {exc}")
         local = find_local_pdf(country, dest_dir)
         if local and os.path.getsize(local) > 0:
@@ -341,7 +448,7 @@ def main(argv=None):
         description="Ticaret Bakanlığı Ülke Profili PDF indirici")
     parser.add_argument("country", help="ülke adı (TR) veya ISO3 kodu")
     parser.add_argument("--dir", dest="dest_dir", default=None,
-                        help=f"indirme klasörü (varsayılan: {DEFAULT_PDF_DIR})")
+                        help=f"indirme klasörü (varsayılan: {default_pdf_dir()})")
     parser.add_argument("--refresh", action="store_true",
                         help="bölge/ülke haritasını yeniden tarayıp önbelleği tazele")
     args = parser.parse_args(argv)

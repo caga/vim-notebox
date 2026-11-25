@@ -1,6 +1,6 @@
 *vim-notebox.txt*   A zettelkasten note box with auto-fetched country notes
                                                             *vim-notebox*
-                                  vim9script plugin   Last change: 2026 Oct 13
+                                  vim9script plugin   Last change: 2026 Nov 19
 
 ==============================================================================
 CONTENTS                                                    *vim-notebox-contents*
@@ -27,9 +27,9 @@ vim-notebox is a modified zettelkasten implementation for local note taking and
 knowledge-base work.  Notes are plain Markdown files with a YAML header, all
 stored flat inside a "note box" directory.  In addition to manual notes, a set
 of Python scripts can fetch external data (Ministry of Foreign Affairs pages,
-World Bank indicators, Trade Map trade figures, Trade Ministry country-profile
-PDFs, country maps) and turn them into notes that are linked into per-country
-"dashboard" pages.
+World Bank indicators, CIA World Leaders, Trade Map trade figures, Trade
+Ministry country-profile PDFs, country maps) and turn them into notes that are
+linked into per-country "dashboard" pages.
 
 The plugin is written in |vim9script|.
 
@@ -43,6 +43,7 @@ Main features:
   - Freshness gate: recent reports are not re-downloaded; older ones prompt.
   - `--delete` (and vim delete commands) to remove generated note sets.
   - Pandoc export to PDF/DOCX/beamer.
+  - Per-country HTML export of the automatic information notes (OBN).
 
 ==============================================================================
 2. REQUIREMENTS AND INSTALLATION                            *vim-notebox-install*
@@ -62,8 +63,10 @@ Install ~
      python3 -m venv venv
      venv/bin/python3 -m pip install -r requirements.txt
 <
-     The scripts are run with `plugin/scripts/venv/bin/python3` by default
-     (change with the `g:*_python` options, see |vim-notebox-config|).
+     The Vim wrappers run the scripts with `plugin/scripts/venv/bin/python3`
+     by default (change with the `g:*_python` options, see
+     |vim-notebox-config|).  Direct CLI runs use the shebang instead; see
+     step 5 below.
 
   3. Set your note box and, optionally, your name:
 >
@@ -78,7 +81,20 @@ Install ~
      If the plugin is installed as a normal runtimepath package you can run
      `:helptags ALL` instead.
 
-  5. (PDF/DOCX export only) Install `pandoc`, `pandoc-crossref`,
+  5. The Python scripts are directly executable:
+>
+     cd <plugin>/plugin/scripts
+     ./getDbn.py NPL --box ~/notes
+     ./getCountry.py Nepal --box ~/notes
+<
+     Their shebang points at the bundled virtualenv, so no activation is
+     needed.  If the plugin directory moves, update the shebang (or run the
+     scripts with `venv/bin/python3`).  If an archive lost the executable bit:
+>
+     chmod +x <plugin>/plugin/scripts/get*.py
+<
+
+  6. (PDF/DOCX export only) Install `pandoc`, `pandoc-crossref`,
      `pandoc-plot`, and view the helpers `links-to-pdf.lua` and
      `table-border.lua` under `$HOME/.bin`, plus `zathura` and
      `onlyOffice.AppImage`.
@@ -146,6 +162,28 @@ Core ~
   g:docdir            Default: "docs"
         Directory for exported DOCX files.
 
+                                                            *g:htmlexport_dir*
+  g:htmlexport_dir    Default: "htmlExports"
+        Root directory (relative to the box, or absolute) for |:ObnHtmlExport|.
+        Each country is written to `<root>/<Ülke>Notları/`.
+
+                                                         *g:htmlexport_python*
+  g:htmlexport_python   Default: "<plugin>/scripts/venv/bin/python3"
+        Interpreter used by |:ObnHtmlExport|.
+                                                         *g:htmlexport_script*
+  g:htmlexport_script   Default: "<plugin>/scripts/exportObnHtml.py"
+        Exporter script used by |:ObnHtmlExport|.
+                                                            *g:htmlexport_open*
+  g:htmlexport_open   Default: 1
+        When 1, |:ObnHtmlExport| opens the generated `index.html` in the
+        browser.
+                                                          *g:htmlexport_opener*
+  g:htmlexport_opener   Default: "xdg-open"
+        Browser opener command used by |:ObnHtmlExport|.
+                                                           *g:htmlexport_map*
+  g:htmlexport_map    Default: '<Leader>ohe'
+        Normal-mode mapping for |:ObnHtmlExport|.
+
                                                           *g:bibfiles_directory*
   g:bibfiles_directory   Default: "bibfiles"
         Sub-directory that holds per-note `.bib` files.
@@ -176,6 +214,29 @@ Fetchers ~
   g:country_keep_log  Default: 0
         When 1, keep the |:Countryfetch| log window open after completion.
 
+                                                              *g:wb_async*
+  g:wb_async          Default: 1
+        When 1, |:Wbfetch| runs asynchronously and streams its diagnostics
+        into a `[Wbfetch]` scratch buffer.  Vim never kills the job; the
+        fetch runs to completion even while you keep editing.  Use
+        |:Wbcancel| to stop it.  Set 0 to run synchronously (Vim blocks
+        until the script exits).
+
+                                                             *g:wb_keep_log*
+  g:wb_keep_log       Default: 0
+        When 1, keep the `[Wbfetch]` log buffer open after a successful run.
+
+                                                     *g:wb_report_max_age_days*
+  g:wb_report_max_age_days  Default: 7
+        Age limit (days) for each cached World Bank object.  A file under
+        `data/<iso3>/wbdata/` younger than the limit is read from disk
+        without a request; an older or missing file is downloaded again.
+        The country fact sheet counts too, and every object is judged on its
+        own file date, so one run can mix cached and fresh rows.  When the
+        script is run directly, `NOTES_WB_REPORT_MAX_AGE_DAYS` overrides
+        this; it falls back to `NOTES_REPORT_MAX_AGE_DAYS`.  See
+        |vim-notebox-wb-incremental|.
+
                                                                *g:tbup_async*
   g:tbup_async        Default: 1
         When 1, |:Tbupfetch| runs asynchronously.
@@ -200,6 +261,29 @@ Fetchers ~
   g:tbup_pdfdir       Default: "<box>/tbupPdfs"
         Folder where country-profile PDFs are downloaded.
 
+                                                           *g:tbup_chart_mode*
+  g:tbup_chart_mode   Default: "table+mermaid"
+        How charts in country profiles are rendered:
+          "table+mermaid"  markdown table and a mermaid diagram (default)
+          "table"          markdown table only
+          "mermaid"        mermaid diagram only
+          "image"          cropped PNG (debug fallback)
+          "text"           legacy pymupdf4llm picture text
+        If a chart cannot be reconstructed (for example when the source PDF
+        omits legend labels), a cropped PNG is inserted instead.
+
+                                                    *g:tbup_disambiguate_titles*
+  g:tbup_disambiguate_titles   Default: 1
+        When 1, duplicate section titles get a parent qualifier, e.g.
+        "İhracat (Ürün Grupları)" / "İhracat (Ülkeler)" and
+        "Genel Durum (Dış Ticaret)" / "Genel Durum (Türkiye ile Ticaret)".
+        Keys and note ids are unchanged.
+
+                                                              *g:tbup_skip_ekler*
+  g:tbup_skip_ekler   Default: 0
+        When 1, do not generate the EK-1…EK-6 table notes.  The EK data is
+        still used for the country pie charts.
+
                                                               *g:gmap_height*
   g:gmap_height       Default: 350
         Height (px) of the map link inserted by |:Gmapfetch|.
@@ -215,6 +299,12 @@ Report freshness gate ~
                                                         *g:country_report_ask*
   g:country_report_ask     Default: 1
         When 1, ask (Evet/Hayır) before regenerating a stale trade report.
+
+                                                     *g:tradeapp_dir*
+  g:tradeapp_dir   Default: ~/calisma/tmapp
+        Directory of the `tmapp` Trade Map package that provides
+        ulkeTrapor.py / ikiliRapor.py / tRwF.py.  The trade wrappers and
+        |:Countryfetch| export it as `$TRADEAPP_DIR` for the adapters.
 
                                                     *g:tbup_report_max_age_days*
   g:tbup_report_max_age_days   Default: 30
@@ -281,6 +371,31 @@ Report freshness gate ~
   g:otherbn_delete_map  Default: '<Leader>bnd'
         Normal-mode mapping for |:Otherbndelete|.
 
+                                                  *g:leaders_report_max_age_days*
+  g:leaders_report_max_age_days   Default: 30
+        Age limit (days) for the CIA World Leaders note (|:Leadersfetch|).
+        Newer notes are kept; older ones prompt for regeneration.  When the
+        script is run directly, `NOTES_LEADERS_REPORT_MAX_AGE_DAYS` overrides
+        this.
+                                                      *g:leaders_report_check*
+  g:leaders_report_check   Default: 1
+        When 0, disable the leaders freshness gate.
+                                                       *g:leaders_report_ask*
+  g:leaders_report_ask     Default: 1
+        When 1, ask (Evet/Hayır) before regenerating a stale leaders note.
+                                                          *g:leaders_fetch_map*
+  g:leaders_fetch_map    Default: '<Leader>wl'
+        Normal-mode mapping for |:Leadersfetch|.
+                                                         *g:leaders_delete_map*
+  g:leaders_delete_map   Default: '<Leader>wld'
+        Normal-mode mapping for |:Leadersdelete|.
+                                                            *g:leaders_python*
+  g:leaders_python      Default: "<plugin>/scripts/venv/bin/python3"
+        Interpreter used by |:Leadersfetch|.
+                                                            *g:leaders_script*
+  g:leaders_script      Default: "<plugin>/scripts/getLeaders.py"
+        Script used by |:Leadersfetch|.
+
                                                             *g:permnote_type*
   g:permnote_type      Default: 'perm'
         n_type written by |:MakePermNote| (unless overridden by its argument).
@@ -292,16 +407,64 @@ Report freshness gate ~
   g:permnote_map       Default: '<Leader>pn'
         Normal-mode mapping for |:MakePermNote|.
 
+CV generation ~
+                                                                *g:cv_python*
+  g:cv_python          Default: "<plugin>/scripts/venv/bin/python3"
+        Interpreter used by |:Cvgenerate|.
+                                                                *g:cv_script*
+  g:cv_script          Default: "<plugin>/scripts/generateCv.py"
+        Generator script used by |:Cvgenerate|.
+                                                         *g:cv_generate_map*
+  g:cv_generate_map    Default: '<Leader>cv'
+        Normal-mode mapping for |:Cvgenerate|.
+
+WorldBank table refresh ~
+                                                          *g:wb_table_python*
+  g:wb_table_python    Default: "<plugin>/scripts/venv/bin/python3"
+        Interpreter used by |:Wbtable|.
+                                                          *g:wb_table_script*
+  g:wb_table_script    Default: "<plugin>/scripts/wbTable.py"
+        Script used by |:Wbtable|.
+                                                             *g:wb_table_map*
+  g:wb_table_map       Default: '<Leader>wt'
+        Normal-mode mapping for |:Wbtable|.
+
+Command-line messages ~
+                                                             *g:notebox_verbose*
+  g:notebox_verbose   Default: 1
+        When 1, fetchers report which script is running and what it does in
+        the command line.  When 0, the start/step/check messages are
+        suppressed; the `:Xxxfetch` prompts still identify the script.
+
+                                                         *g:notebox_fetch_desc*
+  g:notebox_fetch_desc   Default: built-in Turkish descriptions
+        Dictionary mapping a script name to the short description used in
+        prompts and progress messages.  Override or add entries, for example:
+>
+        let g:notebox_fetch_desc = {
+          \ 'getDbn.py': 'MFA künye notları',
+          \ }
+<
+
 Interpreter and script paths ~
   The following let you override the Python interpreter and script locations,
   one pair per fetcher.  Defaults point at `plugin/scripts/venv/bin/python3`
   and the matching script.
 
+  These options affect the Vim commands only.  When a script is run directly
+  (`./getDbn.py ...`), its shebang selects the interpreter; see
+  |vim-notebox-install|.
+
+  The trade adapters import the `tmapp` package from |g:tradeapp_dir| instead
+  of vendoring it; set that variable if the package lives elsewhere.
+
   `g:country_python` / `g:country_script`   (getCountry.py)
   `g:dbn_python`     / `g:dbn_script`       (getDbn.py)
   `g:wb_python`      / `g:wb_script`        (getData.py)
-  `g:stmd_python`    / `g:stmd_script`      (getStmd.py)
-  `g:tmd_python`     / `g:tmd_script`       (getTmd.py)
+  `g:leaders_python` / `g:leaders_script`   (getLeaders.py)
+  `g:stmd_python`    / `g:stmd_script`      (getUlkeTrapor.py)
+  `g:tmd_python`     / `g:tmd_script`       (getIkiliRapor.py)
+  `g:tradeapp_dir`                          (tmapp kökü; varsayılan ~/calisma/tmapp)
   `g:tbup_python`    / `g:tbup_script`      (getTbupNotes.py)
   `g:tubitak_python` / `g:tubitak_script`   (getTubitakNotes.py)
   `g:kosgeb_python`  / `g:kosgeb_script`    (getKosgebNotes.py)
@@ -312,10 +475,23 @@ Interpreter and script paths ~
 Environment variables ~
   The scripts also read these (set by the wrappers): `NOTES_DIR`,
   `NOTES_BIB_DIR`, `NOTES_AUTOHUB`, `NOTES_MAP_HEIGHT`,
-  `NOTES_REPORT_MAX_AGE_DAYS`, `NOTES_TBUP_REPORT_MAX_AGE_DAYS`,
-  `NOTES_TUBITAK_REPORT_MAX_AGE_DAYS`, `NOTES_KOSGEB_REPORT_MAX_AGE_DAYS`,
-  `NOTES_TUYSGM_REPORT_MAX_AGE_DAYS`, `NOTES_OTHERBN_REPORT_MAX_AGE_DAYS`,
-  `TBUP_PDF_DIR`, `GMAP_NOTES_DIR`, `GMAP_MAPS_DIR`.
+  `NOTES_REPORT_MAX_AGE_DAYS`, `NOTES_WB_REPORT_MAX_AGE_DAYS`,
+  `NOTES_LEADERS_REPORT_MAX_AGE_DAYS`,
+  `NOTES_TBUP_REPORT_MAX_AGE_DAYS`, `NOTES_TUBITAK_REPORT_MAX_AGE_DAYS`,
+  `NOTES_KOSGEB_REPORT_MAX_AGE_DAYS`, `NOTES_TUYSGM_REPORT_MAX_AGE_DAYS`,
+  `NOTES_OTHERBN_REPORT_MAX_AGE_DAYS`, `TBUP_PDF_DIR`, `GMAP_NOTES_DIR`,
+  `GMAP_MAPS_DIR`.
+
+  getData.py additionally reads `NOTES_WB_HTTP_RETRIES` (default 4, number
+  of download attempts per request) and `NOTES_WB_CURL` (curl binary,
+  default `curl` from `$PATH`).
+
+  `NOTES_HTTP_RETRIES` (default 4) is the attempt count for the scripts
+  that use Python `requests` (getLeaders.py, getDbn.py, getMap.py,
+  getStmd.py, getTmd.py, getTbupPdf.py).  Connection resets, timeouts and
+  429/5xx answers are retried with a short pause; 404 and other 4xx answers
+  are reported at once.  Set it to 1 to disable retrying.
+                                                       *NOTES_HTTP_RETRIES*
 
   getTuysgmNotes.py also uses `SOFFICE_BIN` (default `soffice`) for the
   LibreOffice `.doc` -> HTML conversion.
@@ -333,7 +509,8 @@ Commands ~
                        from other notes that reference it.
 
                                                                 *:Getnoteid*
-:Getnoteid {file}      Echo the numeric id stored in a note's YAML header.
+:Getnoteid {file}      Read the numeric id stored in a note's YAML header.
+                       The command itself prints nothing.
 
                                                               *:Openlastnote*
 :Openlastnote          Open the most recently modified note.
@@ -355,8 +532,8 @@ Commands ~
 :Whichbox              Echo the active note box.
 
                                                                   *:Orphans*
-:Orphans               Build `OrphanNotes.md` listing notes that nothing
-                       references.
+:Orphans               Open an unsaved `OrphanNotes.md` buffer listing notes
+                       that nothing references.  Save it with `:w` to keep it.
 
                                                                 *:Lastnotes*
 :Lastnotes {n}         List the N most recent notes in the quickfix list.
@@ -389,12 +566,33 @@ preserved across rewrites (only the note body above it is regenerated).
 Each fetcher has a `:Xxxfetch` command (generate) and a `:Xxxdelete` command
 (remove the generated notes for a country); see |vim-notebox-delete|.
 
-:Countryfetch {country}                                       *:Countryfetch*
+Command-line messages ~
+  Each command identifies the Python script and what it does, both in the
+  input prompt and while it runs:
+>
+     getDbn.py — Dışişleri Bakanlığı ülke notları — Ülke (iso3/ad):
+     getTbupNotes.py — Ticaret Bakanlığı ülke profili — Nepal çalışıyor...
+<
+  During |:Countryfetch| every generator updates the command line when it
+  starts and finishes (for example `getDbn.py — ...` then `getDbn.py — OK`);
+  the full output remains in the `[Countryfetch]` window.  See
+  |g:notebox_verbose| to silence progress messages and |g:notebox_fetch_desc|
+  to change the descriptions.
+
+:Countryfetch {country} [year]                                *:Countryfetch*
   <Leader>cf
   Run getCountry.py: generate every auto page for a country (MFA web notes,
-  World Bank indicators, single + bilateral trade, Trade Ministry profile,
-  map), link them into the country dashboard and open it.  Runs async; shows a
-  live log.  Accepts ISO3 or a Turkish name (e.g. `Nepal`).
+  World Bank indicators, CIA World Leaders, single + bilateral trade, Trade
+  Ministry profile, TÜBİTAK/KOSGEB/TÜYSGM/other-institution notes, CVs for
+  the country's `perm cvb` profiles, map, Dokümanlar page), link them into
+  the country dashboard and open it.
+  The Trade Map year is optional.  When omitted, the trade scripts use the
+  newest year that has data for both imports and exports; an explicit year
+  (e.g. `:Countryfetch Nepal 2024`) still overrides it.
+  Runs async; shows a live log.  Accepts ISO3 or a Turkish name (e.g. `Nepal`).
+  The World Bank step writes one diagnostic line per indicator into the
+  same log; see |:Wbfetch|.  The Vim command has no force option; run the
+  script directly with `--force` to bypass the freshness gates.
 
 :Dbnfetch {country}                                              *:Dbnfetch*
   <Leader>dbn
@@ -403,24 +601,200 @@ Each fetcher has a `:Xxxfetch` command (generate) and a `:Xxxdelete` command
 
 :Wbfetch {country}                                               *:Wbfetch*
   <Leader>wbr
-  Run getData.py: World Bank indicator report ("Gösterge Raporları" —
-  Indicator Reports).
+  Run getData.py: creates two World Bank notes ("Gösterge Raporları" —
+  Indicator Reports), both `n_type: obn indicatorReport`:
+>
+     <Ülke> İlk Bakış                  general country table
+     <Ülke> Temel Ekonomik Göstergeler comparison table from the şablon note
+<
+  Both are listed in the per-country indicator index.  The second note uses
+  the row order, Türkiye values, caption and footnote of the note
+  "Türkiye Son Ekonomik Gösterge Rakamları" (`n_type: şablon`).  Country
+  values are rounded to two decimal places uniformly.  Year placeholders in
+  the şablon row labels (`{year1}`, `{year2}`, ...) are replaced with the
+  endpoint year for that indicator.  A fetched value is always written,
+  even when its year differs from the placeholder; the şablon year is only a
+  label.  If no year is available, the placeholder is removed.
 
-:Stmdfetch {country}                                           *:Stmdfetch*
+  The run is asynchronous by default (|g:wb_async|).  Every indicator gets
+  a diagnostic line, streamed live into the `[Wbfetch]` scratch buffer and
+  echoed on the command line:
+>
+     --- getData.py: [ 1/13] Nüfus (SP.POP.TOTL) — önbellek (0.2 gün):
+         85.88M (2025) | WB 2026-11-11
+     --- getData.py: [ 2/13] GSYH ($) (NY.GDP.MKTP.CD) — endpoint: 1.60T
+         (2025) | HTTP 200 | WB 2026-11-11 | 0.07 sn | 2 deneme
+     --- getData.py: ÖZET (artımlı): 13 gösterge — 12 önbellek, 0 endpoint,
+         0 veri yok, 0 hata, 1 atlandı; modify 18/11/26; veri data/tur/wbdata
+<
+  The source is shown as `endpoint` (downloaded now), `önbellek` (read from
+  the cache file, with its age) or `eski önbellek` (the download failed and
+  an expired file was used instead); missing values, download errors and
+  template rows without a matching indicator code are reported too.  Lines
+  beginning with `...` are extra detail (for example "istek gönderildi")
+  and appear only in the buffer; `---` lines are also echoed on the command
+  line.  The buffer closes on success unless |g:wb_keep_log| is 1; on
+  failure it stays open and is shown even if it was hidden.
+
+  Downloaded JSON is cached inside the note box, one file per object:
+>
+     data/<iso3>/wbdata/general.json             country fact sheet
+     data/<iso3>/wbdata/indicators/<CODE>.json   one indicator
+     data/<iso3>/wbdata/manifest.json            resolved values and years
+<
+  For `Yeni Zelanda` that is `data/nzl/wbdata/`; the folder is created when
+  missing.  Every indicator is fetched on its own with `mrnev=1` (most
+  recent non-empty value, a single row), because that parameter must not be
+  combined with several indicators: the API then answers "The provided
+  parameter value is not valid".
+
+  Downloads use `curl` and are validated before they are kept: the answer
+  is written to a `.part` file, parsed as JSON, and only then renamed over
+  the cache file, so an interrupted download never overwrites good data.
+  Connection resets are retried by the script (not by curl's own `--retry`,
+  which fires its attempts back to back within a few milliseconds and lands
+  them all in the same outage window): the attempts are separated by a
+  short pause, which is what makes the second connection succeed.
+  `NOTES_WB_HTTP_RETRIES` (default 4) sets the attempt count and appears in
+  the diagnostic line as `N deneme`.  If three indicators in a row fail, the
+  network is assumed down and the remaining rows are marked without being
+  requested, so a dead connection ends in seconds instead of minutes.
+
+  Freshness is decided by the **file date**, not by the note's `modify:`
+  field: a cache file younger than `NOTES_WB_REPORT_MAX_AGE_DAYS` (default
+  7) is used as is, an older one is downloaded again.  Each object is
+  refreshed on its own, so one run can mix cached and fresh rows.  The
+  country fact sheet is cached the same way.  A transport error is never
+  recorded as `veri yok`: an expired cache file is preferred, the note's old
+  value is kept if there is no file, and `modify:` is not advanced — so the
+  next run retries instead of waiting out the age limit.  `--force` ignores
+  the age, `--rebuild` reads only the cache and never touches the network.
+  `:Wbcancel` stops a running fetch.
+
+  See |vim-notebox-wb-incremental| for when values are reused and when all
+  indicators are refreshed.
+
+  To test the endpoint without writing notes or touching the cache, run the
+  script directly with `--ping`; it prints the HTTP status and then every
+  indicator with its year and value.
+
+                                                        *vim-notebox-wb-incremental*
+  The cache is the `wbdata/` folder, not the note.  Each downloaded object
+  carries its own file date, and that date decides whether it is used or
+  downloaded again:
+
+  - file younger than |g:wb_report_max_age_days| (default 7): read from the
+    file, no request
+  - file at or after the limit, or missing: download that object again
+  - `--force`: ignore every file date and download all of them
+  - `--rebuild`: never download; build the notes from the cache only
+
+  Because the decision is per file, a single run mixes cached and fresh
+  rows: one expired indicator is refreshed while the other twelve are read
+  from disk.  Nothing is shared between the country fact sheet and the
+  indicators either — `general.json` expires on its own date.
+
+  A failed download never becomes `veri yok`.  If an expired cache file
+  exists it is used instead (shown as `eski önbellek` in the log and counted
+  in the summary); without a file the value from the previous note is kept.
+  In both cases `modify:` is not advanced and the summary says
+  "modify korundu", so the next run retries those objects instead of
+  waiting out the age limit.  Only a run without transport errors sets
+  `modify:` to today.
+
+  The year in a şablon row label is symbolic: successful fetches replace
+  its `{yearN}` placeholder with the endpoint year, and no validation
+  compares the two.  To refresh every row from a clean cache, use
+  `--force`; to rebuild the notes after editing the şablon or the tables
+  without any network access, use `--rebuild`.  `--clear-cache` deletes
+  `data/<iso3>/wbdata/` and then continues normally.  `--delete` removes the
+  indicator notes but keeps the cache; add `--delete-data` to remove the
+  folder as well (`:Wbdelete` asks, default Hayır).  `Arge/GSYH % Oranı` has
+  no row in the şablon note and is skipped with a diagnostic.
+
+:Wbcancel                                                       *:Wbcancel*
+  <Leader>wbc
+  Stop the `getData.py` job started by |:Wbfetch|.  The `[Wbfetch]` log is
+  kept so the last streamed line stays readable; a new |:Wbfetch| can be
+  started immediately afterwards.
+
+:Wbtable                                                       *:Wbtable*
+  <Leader>wt
+  Refresh the indicator table of the current `obn indicatorReport` note from
+  the current şablon note, without fetching anything and without creating a
+  note or changing links.  The existing country values are kept and rounded
+  to two decimal places uniformly; template rows that are not present in the
+  note become `veri yok`.  Year labels already present in the note are
+  preserved; a new şablon row without a note value loses its `{yearN}`
+  placeholder and becomes `veri yok` (Wbtable never fetches).  The YAML
+  header, bibfile and `#BackReferences` are preserved; `modify` is updated.
+  Only works on notes that contain a WB indicator table.
+
+:Leadersfetch {country}                                     *:Leadersfetch*
+  <Leader>wl
+  Run getLeaders.py: fetch the CIA World Leaders page for the country and
+  create one content note:
+>
+     <Ülke> Liderler ve Kabine Üyeleri   (n_type: obn leaders)
+<
+  The content note contains the head of state, cabinet ministers and other
+  senior officials listed by CIA.  The table groups all positions held by
+  the same person into one row; multiple positions are shown in the
+  `Görev` cell, one per line, in CIA order.  The table is an aligned
+  pandoc grid table and long positions wrap.  Existing notes are rebuilt
+  with `--force`.
+  The note title, table headers and the OBN section are Turkish; CIA job
+  titles, group labels and the source caveat stay in their original
+  English form.  The note is linked directly on the country OBN page
+  under `## Liderler ve Kabine`; no per-country index is created.  Every
+  leaders note is also listed in the global `Liderler ve Kabine Dizini`
+  (`n_type: hub leaders`), which is linked from `obn-hub.md`.
+  The country may be given as a Turkish name, ISO3 code, or CIA English
+  name.  A 30-day freshness gate applies (|g:leaders_report_max_age_days|).
+  Mappings: |g:leaders_fetch_map| / |g:leaders_delete_map|.
+  cia.gov drops roughly half of the new TLS connections with "Connection
+  reset by peer"; every request is therefore retried up to four times, with
+  a short pause between attempts (|NOTES_HTTP_RETRIES|).  A 404 is not
+  retried: it means the country has no CIA page and is reported as
+  `NODATA`.
+
+:Leadersdelete {country}
+  <Leader>wld
+  Remove the leaders content note, its bibfile, the
+  `## Liderler ve Kabine` section from the country OBN page, and the
+  country's entry in the global leaders directory.  If the directory
+  becomes empty, it is removed and its link in `obn-hub.md` is cleaned up.
+
+:Stmdfetch {country} [year]                                    *:Stmdfetch*
   <Leader>stmd
-  Run getStmd.py: single-country foreign-trade figures ("Dış Ticaret
-  Rakamları" — Foreign Trade Figures) from Trade Map.
+  Run getUlkeTrapor.py: single-country foreign-trade figures from Trade Map.
+  Two notes are written and listed in the country trade index:
+  "{country} Dış Ticaret Rakamları" (5 tables) and
+  "{country} Dış Ticaret Rakamları -Şekilli" (same tables plus Mermaid
+  partner charts).  The year is optional; when omitted, the newest year with
+  data for both imports and exports is used.
 
-:Tmdfetch {partner}                                              *:Tmdfetch*
+:Tmdfetch {partner} [year]                                     *:Tmdfetch*
   <Leader>tmd
-  Run getTmd.py: bilateral Türkiye–{partner} figures ("İkili Ticaret
+  Run getIkiliRapor.py: bilateral Türkiye–{partner} figures ("İkili Ticaret
   Rakamları" — Bilateral Trade Figures).  The note is attached to the partner.
+  The year is optional; when omitted, the newest year with data for both
+  flows is used.
 
 :Tbupfetch {country}                                           *:Tbupfetch*
   <Leader>tb
   Run getTbupNotes.py: download the Trade Ministry country-profile PDF
   ("Ülke Profili" — Country Profile) and split it into section notes and a
-  per-country index.
+  per-country index.  Charts are rebuilt as tables + mermaid diagrams; the
+  PDF's "Detaylı tablo için tıklayınız" lines become "Detaylı bilgi için"
+  links to the related EK note.  EK note titles omit the thousand-dollar unit
+  suffix (for example "(1 000 dolar)").
+  Optional arguments after the country (they set the matching g: option for
+  the session):
+    --charts=MODE        table+mermaid (default), table, mermaid, image, text
+    --no-disambiguate    keep raw duplicate titles
+    --skip-ekler         do not generate the EK-1…EK-6 notes
+    --force              ignore the freshness gate and regenerate now
 
 :Tubitakfetch {country}                                     *:Tubitakfetch*
   <Leader>tu
@@ -463,6 +837,26 @@ Each fetcher has a `:Xxxfetch` command (generate) and a `:Xxxdelete` command
   written to `bibfiles/<newid>.bib`; the note itself is never saved.  Opens in a
   split unless |g:permnote_split| is 0.
 
+:Cvgenerate                                                   *:Cvgenerate*
+  <Leader>cv
+  From the current note whose `n_type` contains `cvb` (that is, `cvb` or
+  `perm cvb`), run `generateCv.py` to create an `n_type: obn cv` grid-table CV
+  in the same note box, then open it.  If a related CV already exists it is
+  updated in place (legacy `n_type: cv` notes are adopted); no duplicate is
+  created.  The CV is linked on the country OBN page under `## CV Notları`;
+  existing links and notes on the OBN page and the country dashboard are
+  preserved.  The source note is not modified.  The generated note has no
+  `#BackReferences` block and no visible source link; provenance is kept only
+  in YAML as `cv_source: <source file name>`.  The script can also be run
+  directly:
+>
+     ./generateCv.py 1790086521 --box ~/countryNotes
+     ./generateCv.py "Enrico Palermo" --box ~/countryNotes
+     ./generateCv.py NPL --all --box ~/countryNotes
+<
+  |:Countryfetch| runs the `--all` form automatically for the country's
+  `perm cvb` profiles.  See |vim-notebox-cli| for the flags.
+
 :Gmapfetch {country}                                           *:Gmapfetch*
   <Leader>gm
   Run getMap.py: download and crop the country map to
@@ -479,9 +873,29 @@ When a trade or country-profile report already exists, vim-notebox shows its
 age and asks before regenerating:
 
   - Trade reports (|:Stmdfetch|, |:Tmdfetch|): threshold
-    |g:country_report_max_age_days| (default 7).
+    |g:country_report_max_age_days| (default 7).  |:Stmdfetch| checks both the
+    table note and its "-Şekilli" companion, and a requested year that the
+    note does not contain also counts as stale.
   - Country profiles (|:Tbupfetch|): threshold |g:tbup_report_max_age_days|
     (default 30).
+  - CIA World Leaders notes (|:Leadersfetch|): threshold
+    |g:leaders_report_max_age_days| (default 30).
+  - TÜBİTAK, KOSGEB, TÜYSGM and other-institution notes: their own
+    |g:tubitak_report_max_age_days| / |g:kosgeb_report_max_age_days| /
+    |g:tuysgm_report_max_age_days| / |g:otherbn_report_max_age_days|
+    (default 30 each).
+
+The MFA web notes (|:Dbnfetch|) have no age gate; they are always re-fetched.
+
+World Bank indicators (|:Wbfetch|) use an incremental, file-based refresh
+instead of a confirmation dialog.  Every cached object under
+`data/<iso3>/wbdata/` is considered separately, and its file date is
+compared with |g:wb_report_max_age_days| (default 7).  Fresh files are read
+from disk, expired ones are downloaded again, so a run can mix both.
+`--force` ignores the dates and `--rebuild` never touches the network.
+Because the age source is the cache file, updating the note with
+|:Wbtable| does not reset the World Bank refresh window.  See
+|vim-notebox-wb-incremental|.
 
 Behaviour:
   - no report            -> generate.
@@ -494,8 +908,13 @@ Behaviour:
      Yeni rapor oluşturulsun mu? (E/H)
 <
         "Evet" (Yes) regenerates; "Hayır" (No) opens the existing report.
-  - |g:country_report_check| / |g:tbup_report_check| = 0 disables the gate.
-  - Passing `--force` to the script always regenerates.
+  - Setting the matching `g:*_report_check` to 0 disables the gate for the
+    Vim commands; those commands then run the script with `--force`.
+  - Passing `--force` to a script always regenerates.  The same flag works on
+    the umbrella script: `./getCountry.py Nepal 2025 --force` regenerates every
+    gated report and re-downloads the map.
+  - |:Countryfetch| itself does not pass `--force`; use the script directly
+    when you need to override the gates for all sources at once.
 
 The age is taken from the note's `modify:` field, or its `date:` field when
 `modify:` is empty (the dialog says "oluşturuldu" = "created" in that case).
@@ -514,19 +933,29 @@ their bibfiles and the corresponding section on the per-country OBN page.
 >
      {Ülke} için oluşturulan tüm otomatik bilgi notları silinsin mi?(E/H)
      [Delete all automatic information notes generated for {country}? (Y/N)]
+
+     {Ülke} için JSON önbelleği de silinsin mi? (data/<iso3>/wbdata — N dosya)
+     [Delete the country's JSON cache as well?]
 <
+  The second question appears only when a cache exists and defaults to
+  **Hayır**: `data/<iso3>/wbdata/` is kept, so a later fetch can rebuild the
+  notes without network access.  Answering Evet removes that folder only; the
+  documents next to it (`Raporlar/`, `ciktilar/`, `eski/`, images) are never
+  touched, and `data/<iso3>/` itself is removed only when it becomes empty.
   Per-source delete commands (each with its own confirmation):
                                                      *:Dbndelete*  <Leader>dbnd
      :Dbndelete   Dışişleri Bakanlığı web notları (MFA web notes)
                                                       *:Wbdelete*  <Leader>wbd
      :Wbdelete    WorldBank gösterge notları (World Bank indicators)
+                                                 *:Leadersdelete*  <Leader>wld
+     :Leadersdelete  CIA World Leaders liderler ve kabine notları
                                                     *:Stmddelete*  <Leader>stmdd
      :Stmddelete  dış ticaret notları (foreign trade figures)
                                                      *:Tmddelete*  <Leader>tmdd
      :Tmddelete   ikili ticaret notları (bilateral trade figures)
                                                     *:Tbupdelete*  <Leader>tbd
      :Tbupdelete  Ticaret Bakanlığı ülke profil notları (country profile)
-                                                 *:Tubitakdelete*  <Leader>ttd
+                                                 *:Tubitakdelete*  <Leader>tud
      :Tubitakdelete  TÜBİTAK bilgi notları (TÜBİTAK reports)
                                                   *:Kosgebdelete*  <Leader>tkd
      :Kosgebdelete  KOSGEB bilgi notları (KOSGEB reports)
@@ -534,10 +963,20 @@ their bibfiles and the corresponding section on the per-country OBN page.
      :Tuysgmdelete  TÜYSGM bilgi notları (TUYSGM reports)
                                                  *:Otherbndelete*  <Leader>bnd
      :Otherbndelete  diğer kurum bilgi notları (other institution notes)
+     :CountryFilesDelete  Dokümanlar page (`obn files`; only pages authored by
+                     getObnFiles are removed)
+
+`:Wbdelete` asks twice: first for the indicator notes, then for
+`data/<iso3>/wbdata/` (`JSON önbelleği de silinsin mi?`).  The cache question
+defaults to Hayır and is skipped when no cache exists.  On the command line
+`getData.py --delete` keeps the cache and `--delete --delete-data` removes it;
+`getCountry.py` behaves the same way.
 
 Choosing "Hayır" (No) cancels ("Silme iptal edildi" — deletion cancelled).
 If removing the last section empties a per-country OBN page, that page and its
-links in `obn-hub.md` and the dashboard are removed as well.
+links in `obn-hub.md` and the dashboard are removed as well.  Deleting a
+leaders note also removes its entry from the global leaders directory; an
+empty directory and its `obn-hub.md` link are removed.
 
 ==============================================================================
 9. NOTE TYPES AND VAULT LAYOUT                          *vim-notebox-note-types*
@@ -568,6 +1007,7 @@ n_type classification ~
 >
      obn dbwn               MFA web note (content)
      obn indicatorReport    World Bank indicator note (content)
+     obn leaders            CIA World Leaders note (content)
      obn singletrade        single-country trade note (content)
      obn bilateraltrade     bilateral trade note (content)
      obn tbup               country-profile section note (content)
@@ -578,18 +1018,28 @@ n_type classification ~
                             tse, mtgm, db, tb, tua, tuba, sgm, sbgm, savgm,
                             atgm, kagm, ...)
      obn dizin <type>       per-country index of a type
+     obn files              per-country "<Ülke> Dokümanları" document index
      hub obn {iso3}         per-country OBN page
      hub obn genel          global OBN registry (obn-hub.md)
+     hub leaders            global leaders directory
      hub {iso3}             country dashboard
      ugh                    general hub (index.md)
+     cvb                    CV information profile (legacy)
+     perm cvb               permanent CV information profile
+     obn cv                 generated CV grid table
+     cv                     legacy generated CV (adopted to obn cv)
 <
   Manual notes use their own values (`gbn`, `cv`, `yön`, `perm`,
   `floating`, ...).  `perm` is produced by |:MakePermNote| from an `obn` note.
+  A `cvb`/`perm cvb` profile is the input for |:Cvgenerate|; the generated
+  grid table uses `n_type: obn cv` and is linked on the country OBN page.
 
 Vault layout ~
   <box>/                     note root (flat `<id>.md` notes)
     index.md                 general hub; links obn-hub.md (ugh)
     obn-hub.md               registry of per-country OBN pages (hub obn genel)
+    <id>.md                  global leaders directory
+                             (hub leaders; linked from obn-hub.md)
     bibfiles/<id>.bib        one bibliography per generated note
     data/img/maps/<iso3>.png country maps
     tbupPdfs/                downloaded country-profile PDFs
@@ -598,6 +1048,7 @@ Vault layout ~
     data/<iso3>/gbn/tuysgm/  TUYSGM "Bilgi Notu" .doc files (source for tuysgm)
     data/gbns/<inst>/        multi-country institution notes (source for otherbn)
     pdfs/ , docs/            exported PDF / DOCX files
+    htmlExports/<Ülke>Notları/  exported OBN HTML site (|:ObnHtmlExport|)
 
 ==============================================================================
 10. EXPORT AND VIEWING                                        *vim-notebox-export*
@@ -617,8 +1068,55 @@ Buffer-local (Markdown) commands and mappings:
 :Saveas                 *:Saveas*       <Leader>sa
   Prompt for type (PDF/DOCX) and output name, convert, and open.
 
-:DeleteCurrentNote      (mapping <Leader>dn)
-  Delete the current note and any associated bibfiles.
+Mermaid diagrams in profile notes ~
+  Country-profile notes can contain ```mermaid fenced blocks (see
+  |g:tbup_chart_mode|).  The built-in PDF/DOCX converters do not render them
+  by default.  To render them with the installed `mermaid-filter`:
+>
+  pandoc note.md -o note.pdf --filter mermaid-filter \
+    --lua-filter ~/.bin/links-to-pdf.lua --citeproc
+<
+  `mermaid-filter` uses `mmdc` (mermaid-cli) and writes PNG files next to the
+  note.  Set `MERMAID_FILTER_FORMAT=svg` to produce SVG instead.
+
+  Country-profile charts are emitted as Pandoc Figure nodes (via
+  `plugin/scripts/mermaid-figures.lua`), so `pandoc --lof` produces a List of
+  Figures.  Tables use Pandoc's `: caption` syntax and `pandoc --lot`
+  produces a List of Tables.  The generated YAML sets `lofTitle: "Şekiller"`
+  and `lotTitle: "Tablolar"`.  The PDF, Beamer and DOCX commands put table
+  and figure captions below with `--table-caption-position=below` and
+  `--figure-caption-position=below`.
+
+HTML export (country OBN pages) ~
+:ObnHtmlExport {country}                                 *:ObnHtmlExport*
+  <Leader>ohe
+  Export the country's automatic information notes (OBN) as a standalone
+  HTML site under `<box>/htmlExports/<Ülke>Notları/` (see
+  |g:htmlexport_dir|).
+  The country OBN hub (`hub obn {iso3}`) becomes `index.html`; every other
+  country OBN note becomes `<id>.html`.  Only notes whose `n_type` contains
+  `obn` and whose `country` matches the requested country are exported.  The
+  `obn files` page, the global `obn-hub.md`, the country dashboard
+  (`hub {iso3}`) and other countries' notes are excluded.  The
+  `#BackReferences` block is removed and internal `.md` links to exported
+  pages are rewritten to `.html`; links to excluded notes become plain text.
+  The country map (`data/img/maps/{iso3}.png`) is copied as `map.png` and
+  shown at the top of the home page.  A shared `style.css` is written next to
+  the pages.  Local images referenced by the notes are copied into the export
+  folder preserving their original relative paths (for example
+  `data/img/portrait.png`), so images stay portable when the folder is moved.
+  PDF/DOCX documents are not copied; their links are rebased relative to the
+  export folder and therefore work only while the export stays inside the
+  note box.  The home page is opened in the browser unless
+  |g:htmlexport_open| is 0.  Accepts an ISO3 code or a Turkish country name
+  (e.g. `Nepal` or `NPL`).  Mermaid blocks in the notes are rendered in the
+  exported HTML: a local `mermaid.min.js` is copied when found (checked via
+  `$OBN_MERMAID_JS`, `$MERMAID_JS`, `~/.bin`, `node_modules`, or the `mmdc`
+  installation), otherwise the CDN build is referenced.
+
+<Leader>dn             Delete the current note and any associated bibfiles.
+                        There is no `:DeleteCurrentNote` command; the action
+                        is available through this mapping (and `<Plug>Deletenote`).
 
 ==============================================================================
 11. HELPER TOOLS                                             *vim-notebox-helpers*
@@ -635,7 +1133,44 @@ Markdown combiner (`plugin/markdown_combiner.vim`)
 Buffer list in quickfix (`plugin/buffers_with_title.vim`)
                                                               *:BuffersQf*
 :BuffersQf / :Bq            List open buffers with their note titles.
-  Mapping: <Leader>lst    (press <CR> in the list to open a buffer).
+                                                            *:BuffersQfAll*
+:BuffersQfAll               Same, including buffers hidden with `h`.
+                                                          *:BuffersQfReset*
+:BuffersQfReset             Forget hidden buffers and rebuild the list.
+  Mapping: <Leader>lst
+
+  Inside the quickfix window:
+    <CR>    open the buffer under the cursor
+    dd      remove the entry from the list (buffer stays open; 3dd works)
+    x       same as dd; also works on a visual selection
+    D       remove the entry and delete the buffer (asks before discarding
+            changes)
+    h       hide the buffer until the end of the Vim session
+    u       undo the last dd or h
+    R       clear hidden buffers and rebuild the list
+    g?      show this key list
+
+  Hidden buffers are kept in memory only; they reappear after restarting Vim.
+
+Dokümanlar page (`plugin/vim-notebox-obnfiles.vim`)
+                                                          *:CountryFiles*
+:CountryFiles [country]     Create/update `<Ülke> Dokümanları`
+                            (`n_type: obn files`).  Lists documents used in
+                            the country's OBN notes, documents under
+                            `data/<iso3>` (except `eski/` and image folders),
+                            country files in `data/documents`, and the TBUP
+                            PDF.  Linked from the country hub under
+                            `## Ülke Dokümanları`.  Headings are Turkish.
+                            The generated page is rewritten on every run; put
+                            manual notes in another note.
+  Mapping: <Leader>cF
+                                                    *:CountryFilesDelete*
+:CountryFilesDelete [country]
+                            Delete only the page(s) authored by getObnFiles
+                            and their `## Ülke Dokümanları` link.  The country
+                            hub, OBN page, other notes and all documents are
+                            kept.  No default mapping; map
+                            `<Plug>CountryFilesDelete;` if you want one.
 
 Quickfix toggle (`plugin/qfToggle.vim`)
                                                                *:QfToggle*
@@ -646,42 +1181,135 @@ Quickfix toggle (`plugin/qfToggle.vim`)
 12. PYTHON CLI REFERENCE                                         *vim-notebox-cli*
 
 The wrapper commands run these scripts (see the wrapper for the exact
-interpreter).  They can also be run directly.
+interpreter).  The scripts are also directly executable and accept two common
+options of their own:
 
-getCountry.py <country> [--skip-stmd] [--skip-tmd] [--skip-tbup]
+  --box DIR / --notes-dir DIR   note box to read and write.  Precedence:
+                                `--box` > `$NOTES_DIR` > current directory.
+  -h, --help                    print the script's usage and exit.
+
+Running directly uses the interpreter named in the script's shebang (the
+bundled virtualenv), not `g:*_python`; see |vim-notebox-install|.
+
+Examples:
+>
+  cd <plugin>/plugin/scripts
+  ./getDbn.py NPL --box ~/notes
+  ./getData.py NPL --box ~/notes --check
+  ./getCountry.py Nepal --box ~/notes --force
+  ./getTbupNotes.py NZL --box ~/notes --check
+  ./getObnFiles.py NZL --box ~/notes
+  ./getMap.py NPL --box ~/notes --path
+<
+
+getCountry.py <country> [year] [--trade-year YYYY] [--skip-leaders]
+              [--skip-stmd] [--skip-tmd] [--skip-tbup]
               [--skip-tubitak] [--skip-kosgeb] [--skip-tuysgm]
-              [--skip-otherbn] [--delete]
-  Orchestrates all generators for a country.  `--skip-*` omits a step;
-  `--delete` removes the country's auto notes and OBN page.
+              [--skip-otherbn] [--skip-cv] [--skip-obnfiles]
+              [--force] [--box DIR] [--delete] [--delete-data]
+  Orchestrates all generators for a country.  The Trade Map year comes from
+  the trailing `[year]` or `--trade-year`; when both are omitted, the trade
+  scripts use the newest year with data for both imports and exports.
+  `--skip-*` omits a step; `--force` bypasses every freshness gate and
+  re-downloads the map; `--delete` removes the country's auto notes and OBN
+  page, keeping `data/<iso3>/wbdata/`; add `--delete-data` to remove that
+  JSON cache too (the rest of `data/<iso3>/` is never touched).
 
-getDbn.py     <country> [--delete]
-getData.py    <country> [--delete]
-getStmd.py    <country> [--check] [--force] [--delete]
-getTmd.py     <partner> [--check] [--force] [--delete]
+getDbn.py     <country> [--box DIR] [--delete]
+getData.py    <country> [--box DIR] [--check] [--force] [--rebuild]
+              [--clear-cache] [--delete] [--delete-data] [--ping]
+  Creates two `obn indicatorReport` notes: `<Ülke> İlk Bakış` (general
+  table) and `<Ülke> Temel Ekonomik Göstergeler` (comparison table built
+  from the şablon note).  Both appear in the indicator index.  Downloaded
+  JSON is cached under `data/<iso3>/wbdata/`.  `--check` reports the cache
+  file count, staleness and the chosen mode without network access and
+  without writing anything.  `--force` re-downloads everything,
+  `--rebuild` builds from the cache only (no network), `--clear-cache`
+  deletes the cache folder first, `--delete` removes the notes but keeps the
+  cache (`--delete-data` removes that folder too), `--ping` tests the
+  endpoint without writing.  Without these
+  flags the age of each cache file selects cached or fresh data; see
+  |vim-notebox-wb-incremental|.
+getLeaders.py <country> [--box DIR] [--check] [--force] [--delete]
+              [--link-only] [--slug SLUG]
+  Creates `<Ülke> Liderler ve Kabine Üyeleri` (`obn leaders`) and links it
+  directly on the country OBN page.  The global `Liderler ve Kabine Dizini`
+  (`hub leaders`) lists every leaders note and is linked from `obn-hub.md`.
+  `--check` reports the note age without network access; `--force`
+  regenerates; `--link-only` refreshes the OBN/global links without network
+  access; `--delete` removes the note, OBN section and global entry;
+  `--slug` overrides the CIA page slug.
+getUlkeTrapor.py <country> [year] [--box DIR] [--check] [--force] [--delete]
+getIkiliRapor.py <partner> [year] [--box DIR] [--check] [--force] [--delete]
 getTbupNotes.py <pdf-or-country-or-iso3> [iso3] [--headings] [--dir DIR]
-               [--refresh] [--download-only] [--yes] [--no-prune] [--check]
-               [--force] [--delete]
-getTubitakNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
+               [--box DIR] [--refresh] [--download-only] [--yes]
                [--no-prune] [--check] [--force] [--delete]
-getKosgebNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
-               [--no-prune] [--check] [--force] [--delete]
-getTuysgmNotes.py <iso3|country> [--dir DIR] [--headings] [--yes]
-               [--no-prune] [--check] [--force] [--delete]
-getOtherBns.py <iso3|country> [--dir DIR] [--inst FOLDER] [--headings]
+               [--charts MODE] [--no-disambiguate] [--skip-ekler]
+getTubitakNotes.py <iso3|country> [--dir DIR] [--box DIR] [--headings]
                [--yes] [--no-prune] [--check] [--force] [--delete]
-               [--no-dedup] [--dedup-threshold R]
-getMap.py     <country> [--path] [--dry-run] [--force]
+getKosgebNotes.py <iso3|country> [--dir DIR] [--box DIR] [--headings]
+               [--yes] [--no-prune] [--check] [--force] [--delete]
+getTuysgmNotes.py <iso3|country> [--dir DIR] [--box DIR] [--headings]
+               [--yes] [--no-prune] [--check] [--force] [--delete]
+getOtherBns.py <iso3|country> [--dir DIR] [--box DIR] [--inst FOLDER]
+               [--headings] [--yes] [--no-prune] [--check] [--force]
+               [--delete] [--no-dedup] [--dedup-threshold R]
+getObnFiles.py <country> [--box DIR] [--delete] [--dry-run] [--no-link]
+  Create `<Ülke> Dokümanları` (`n_type: obn files`) from the documents used in
+  OBN notes, `data/<iso3>` (except `eski/`, `img/`, `imgs/`, `maps/`,
+  `sablonlar/`), country files in `data/documents`, and the TBUP PDF.  The page
+  is linked on the country hub under `## Ülke Dokümanları`.  `--delete` removes
+  only pages whose `author` is `getObnFiles`; `--dry-run` writes/deletes
+  nothing; `--no-link` leaves the hub untouched.
+getMap.py     <country> [--box DIR] [--path] [--dry-run] [--force]
+getTbupPdf.py <country> [--dir DIR] [--box DIR] [--refresh]
+exportObnHtml.py <country> [--box DIR] [--root DIR] [--out DIR] [--no-map]
+                 [--no-clean] [--dry-run]
+  Export the country's OBN pages as HTML.  The OBN hub becomes `index.html`,
+  other pages `<id>.html`, the map is copied to `map.png` and a shared
+  `style.css` is written.  Linked local images are copied into the export
+  folder preserving their original relative paths; PDF/DOCX documents are not
+  copied.  `--root` is the export root (default
+  `htmlExports`); `--out` overrides the full output directory; `--no-map`
+  skips the map; `--no-clean` keeps the existing folder; `--dry-run` only
+  lists the plan.
+wbTable.py <note.md | id> [--box DIR] [--template ID] [--stdout]
+  Refresh the indicator table of an `obn indicatorReport` note from the
+  current `n_type: şablon` note (default title: Türkiye Son Ekonomik Gösterge
+  Rakamları).  In-place; no note/link changes.
+generateCv.py <note.md | id | "Full Name"> [--box DIR] [--output FILE]
+              [--id ID] [--image LINE] [--stdout] [--force] [--no-update]
+generateCv.py <country> --all [--box DIR] [--image LINE] [--no-update]
+  Create an `n_type: obn cv` grid-table CV from a `cvb`/`perm cvb` note.
+  One CV is kept per source profile: an existing `obn cv` is updated, a legacy
+  `cv` note is adopted, and no duplicate is created.  `--all <country>` scans
+  all `perm cvb` profiles of that country.  The source note is not modified;
+  the output has no `#BackReferences` block and no visible source link.
+  Provenance is kept only in YAML as `cv_source: <source file name>`.  The CV
+  is linked on the OBN page under `## CV Notları`.  Missing portraits produce
+  a warning and a text cell.
 
 Flag notes:
+  --box DIR      active note box.  `--notes-dir` is an alias; `--box=DIR` is
+                 accepted.  Without it, `$NOTES_DIR` (then cwd) is used.
+  -h, --help     print the script's own usage/flag reference.
+  --box with --dir: `--box` selects the note box (output, default source
+                 roots); `--dir` overrides the source/download folder.
   --check        report the existing report's age only (no network, no
                  writes); prints REPORT_EXISTS / AGE_DAYS / AGE_SOURCE /
                  FRESH / AGE_TEXT lines.
+  --link-only    (getLeaders) refresh the OBN and global directory links
+                 without network access.
   --force        ignore the freshness gate and regenerate.
   --delete       remove the notes this script generated for the country and
                  update the indexes.
   --headings     (tbup, tubitak, kosgeb, tuysgm, otherbn) dry run: print the
                  outline and planned notes.
   --download-only (tbup) download the PDF and stop.
+  --charts MODE  (tbup) chart output: table+mermaid (default), table,
+                 mermaid, image, text.
+  --no-disambiguate (tbup) keep raw heading titles.
+  --skip-ekler   (tbup) do not generate EK-1…EK-6 table notes.
   --yes          (tbup, tubitak, kosgeb, tuysgm, otherbn) auto-confirm orphan
                  deletion / skip prompts.
   --no-prune     (tbup, tubitak, kosgeb, tuysgm, otherbn) never delete orphan
@@ -692,6 +1320,12 @@ Flag notes:
   --no-dedup     (otherbn) disable document de-duplication.
   --dedup-threshold R  (otherbn) near-duplicate similarity threshold (0.90).
   --path         (map) print the target image path and exit.
+  --root DIR     (exportObnHtml) export root relative to the box, or absolute
+                 (default `htmlExports`).
+  --out DIR      (exportObnHtml) exact output directory; overrides --root.
+  --no-map       (exportObnHtml) do not copy/embed the country map.
+  --no-clean     (exportObnHtml) keep the existing output folder.
+  --dry-run      (exportObnHtml) list the pages that would be written.
 
 ==============================================================================
 13. TROUBLESHOOTING                                         *vim-notebox-trouble*

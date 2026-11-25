@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getTubitakNotes.py entegrasyonu (asenkron).
 # Bir ulke icin TUBITAK "Bilgi Notu" PDF'lerini
 # (data/{iso3}/gbn/tubitak) notlara cevirir, notlari ulke tubitak hub'ina
@@ -40,6 +42,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -79,12 +82,14 @@ def ExitCb(_j: job, status: number)
 		endif
 		execute 'edit ' .. fnameescape(target)
 		if status != 0
-			echom 'Tubitakfetch tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
+			echom notebox.Label('getTubitakNotes.py')
+				.. ' — tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
 		else
-			echom 'Tubitakfetch tamamlandı'
+			echom notebox.Label('getTubitakNotes.py') .. ' — tamamlandı'
 		endif
 	else
-		echom 'Tubitakfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getTubitakNotes.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -113,19 +118,21 @@ def GateTubitak(box: string, name: string): dict<any>
 		.. ' && ' .. shellescape(expand(g:tubitak_python))
 		.. ' ' .. shellescape(expand(g:tubitak_script))
 		.. ' ' .. shellescape(name) .. ' --check'
+	notebox.Checking('getTubitakNotes.py')
 	var r = ParseReport(systemlist(cmd))
 	if r.exists == ''
 		return {run: true, target: ''}
 	endif
 	if r.fresh == 1
-		echom 'tubitak atlandı: ' .. r.text .. ' ('
+		echom notebox.Label('getTubitakNotes.py') .. ' atlandı: ' .. r.text .. ' ('
 			.. get(g:, 'tubitak_report_max_age_days', 30) .. ' günden yeni)'
 		return {run: false, target: r.exists}
 	endif
 	if get(g:, 'tubitak_report_ask', 1) != 0
-		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
+		if confirm(notebox.Label('getTubitakNotes.py') .. "\n" .. r.text
+			.. "\nYeni rapor oluşturulsun mu?",
 			"&Evet\n&Hayır", 2) != 1
-			echom 'tubitak atlandı: ' .. r.text
+			echom notebox.Label('getTubitakNotes.py') .. ' atlandı: ' .. r.text
 			return {run: false, target: r.exists}
 		endif
 	endif
@@ -159,6 +166,7 @@ def SyncRun(box: string, name: string)
 		.. ' && ' .. shellescape(expand(g:tubitak_python))
 		.. ' ' .. shellescape(expand(g:tubitak_script))
 		.. ' --yes --force ' .. shellescape(name)
+	notebox.Busy('getTubitakNotes.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -173,13 +181,13 @@ enddef
 
 def g:TubitakFetch(country: string)
 	if s_running
-		echom 'Tubitakfetch zaten çalışıyor'
+		echom notebox.Label('getTubitakNotes.py') .. ' zaten çalışıyor'
 		return
 	endif
 
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getTubitakNotes.py'))
 	endif
 	if name == ''
 		return
@@ -216,7 +224,7 @@ def g:TubitakFetch(country: string)
 	silent! file [Tubitakfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Tubitakfetch başladı (arka planda)...'
+	notebox.Busy('getTubitakNotes.py', name)
 
 	var cmd: list<string> = [expand(g:tubitak_python), expand(g:tubitak_script),
 		'--yes', '--force', name]
@@ -228,7 +236,7 @@ enddef
 def g:TubitakDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getTubitakNotes.py'))
 	endif
 	if name == ''
 		return

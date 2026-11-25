@@ -1,4 +1,18 @@
 #!/home/osman/.vim/plugged/vim-notebox/plugin/scripts/venv/bin/python3
+"""Ulke haritasini indirir ve data/img/maps/{iso3}.png olarak kaydeder.
+
+Kullanim:
+    ./getMap.py Nepal
+    ./getMap.py NPL --box ~/countryNotes
+    ./getMap.py NPL --path
+
+Secenekler:
+    --box DIR   not kutusu (varsayilan: $NOTES_DIR veya cwd)
+    --path      yalnizca hedef yolu yaz ve cik (--dry-run ile ayni)
+    --dry-run   --path ile ayni
+    --force     harita varsa yeniden indir
+"""
+
 import os
 import sys
 import subprocess
@@ -6,8 +20,13 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
+import _cli
+
+_cli.init()
+
 import requests
 import cnlook as lu
+import notebox as nb
 
 BASE_URL = "https://www.harita.gov.tr/homedir-assets/ulke_adlari/ulke/"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -20,8 +39,11 @@ CROP_X = 62
 CROP_Y = 44
 
 # Haritalar aktif not kutusuna yazilir. GMAP_NOTES_DIR verilirse o kullanilir;
-# GMAP_MAPS_DIR verilirse dogrudan o dizin kullanilir.
-NOTES_DIR = os.environ.get("GMAP_NOTES_DIR") or os.getcwd()
+# GMAP_MAPS_DIR verilirse dogrudan o dizin kullanilir. --box, _cli tarafindan
+# NOTES_DIR'e yazilir; dogrudan CLI kullaniminda da ayni oncelik gecerlidir.
+NOTES_DIR = (os.environ.get("GMAP_NOTES_DIR")
+             or os.environ.get("NOTES_DIR")
+             or os.getcwd())
 MAPS_DIR = Path(
     os.environ.get("GMAP_MAPS_DIR")
     or (Path(NOTES_DIR) / "data" / "img" / "maps")
@@ -82,7 +104,8 @@ def resolveCountry(country: str):
 def downloadPdf(url: str, dest: Path) -> bool:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/pdf,*/*"}
     try:
-        response = requests.get(url, headers=headers, timeout=90, allow_redirects=True)
+        response = nb.http_get(url, headers=headers, timeout=90,
+                               allow_redirects=True)
     except requests.RequestException as exc:
         print(f"Download error: {exc}")
         return False

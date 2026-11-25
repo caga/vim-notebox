@@ -1,2 +1,8 @@
 **/*.err
 **/*.swp
+__pycache__/
+*.py[cod]
+*.swpback
+*.BACK
+scripts_backup_*/
+venv/

@@ -14,7 +14,9 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import sys
+import time
 
 import cnlook as lu
 
@@ -66,6 +68,199 @@ def bib_dir(notes=None):
     return os.path.join(notes, "bibfiles")
 
 
+# --------------------------------------------------------- WB veri onbellegi
+def wb_cache_key(iso3, country_field=None):
+    """`data/` altindaki klasor adi: TUR -> tur, Yeni Zelanda -> nzl."""
+    raw = (iso3 or country_field or "unknown").strip().lower()
+    key = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+    return key or "unknown"
+
+
+def wb_cache_dir(iso3, country_field=None, notes=None):
+    """WorldBank JSON onbellegi: <notes>/data/<key>/wbdata."""
+    notes = notes or notes_dir()
+    return os.path.join(notes, "data", wb_cache_key(iso3, country_field),
+                        "wbdata")
+
+
+def wb_cache_stats(path):
+    """(dosya sayisi, bayt) — klasor yoksa (0, 0)."""
+    files = 0
+    size = 0
+    for root, _dirs, names in os.walk(path):
+        for name in names:
+            if not name.endswith(".json"):
+                continue
+            files += 1
+            try:
+                size += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return files, size
+
+
+def human_size(num):
+    """Bayt -> `4.2 KB` gibi kisa metin."""
+    value = float(num or 0)
+    if value < 1024:
+        return f"{value:.0f} B"
+    for unit in ("KB", "MB"):
+        value /= 1024.0
+        if value < 1024:
+            return f"{value:.1f} {unit}"
+    return f"{value / 1024.0:.1f} GB"
+
+
+def remove_wb_cache(iso3, country_field=None, notes=None):
+    """`data/<key>/wbdata` klasorunu siler; bosalan ulke klasoru de kalkar.
+
+    Donus: (silindi_mi, dosya_sayisi, bayt).  `data/<key>` altindaki diger
+    klasorler (Raporlar/, ciktilar/, eski/, resimler) korunur: ulke klasoru
+    ancak tamamen bosalirsa kaldirilir.
+    """
+    path = wb_cache_dir(iso3, country_field, notes)
+    if not os.path.isdir(path):
+        return False, 0, 0
+    files, size = wb_cache_stats(path)
+    shutil.rmtree(path, ignore_errors=True)
+    try:
+        os.rmdir(os.path.dirname(path))
+    except OSError:
+        pass
+    return True, files, size
+
+
+# ---------------------------------------------------------------- HTTP
+# Bu agda TLS el sikismasi aralikli olarak kesiliyor: istek ~0.1 sn icinde
+# "Connection reset" ile dusuyor ve ayni istek sonraki denemede geciyor
+# (olcum: 10 istegin ~5'i ilk denemede dusuyor, 4 denemede 8/8 basarili).
+# Bu yuzden tek isteklik cagrilar burada, Python tarafinda yeniden denenir;
+# `requests`in kendi retry'i (urllib3 Retry) yok.
+HTTP_RETRY_ATTEMPTS = 4
+HTTP_RETRY_STATUS = (429, 500, 502, 503, 504)
+HTTP_RETRY_PAUSE = 0.2
+
+
+def http_attempts():
+    """Deneme sayisi: NOTES_HTTP_RETRIES (varsayilan 4)."""
+    raw = (os.environ.get("NOTES_HTTP_RETRIES") or "").strip()
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return HTTP_RETRY_ATTEMPTS
+
+
+def _http_sleep(attempt):
+    time.sleep(min(1.5, HTTP_RETRY_PAUSE * attempt))
+
+
+def _http_retryable(requests, exc):
+    """Baglanti kesintisi mi (kalici HTTP hatasi degil)?"""
+    return isinstance(exc, (requests.ConnectionError, requests.Timeout,
+                            requests.exceptions.ChunkedEncodingError,
+                            requests.exceptions.ContentDecodingError))
+
+
+def http_get(url, headers=None, timeout=30, attempts=None, session=None,
+             **kwargs):
+    """GET; baglanti kesintisinde ve 429/5xx'te yeniden dener.
+
+    `session` verilirse onun uzerinden gider (cerezleri korur).  Donen
+    yanitta `notebox_attempts` alani kac denemede basarildigini soyler.
+    404 gibi kalici cevaplar yeniden denenmeden oldugu gibi dondurulur.
+    Cozulemeyen baglanti hatasi son denemeden sonra yukseltilir.
+    """
+    import requests
+
+    total = attempts or http_attempts()
+    last = None
+    response = None
+    for attempt in range(1, total + 1):
+        try:
+            call = session.get if session is not None else requests.get
+            response = call(url, headers=headers, timeout=timeout, **kwargs)
+        except requests.RequestException as exc:
+            if not _http_retryable(requests, exc):
+                raise
+            last = exc
+        else:
+            if response.status_code not in HTTP_RETRY_STATUS:
+                response.notebox_attempts = attempt
+                return response
+            last = None
+        if attempt < total:
+            _http_sleep(attempt)
+    if last is not None:
+        raise last
+    response.notebox_attempts = total
+    return response
+
+
+def http_session(headers=None, warmup=None):
+    """Cerez tutan `requests.Session`; `warmup` adresine bir kez ugrar.
+
+    Bazi siteler cerezsiz ilk istegi baska bir sayfaya yonlendiriyor ve veri
+    sayfasi bos donuyor (legacy.trademap.org: `AspxAutoDetectCookieSupport=1`
+    ile Index.aspx).  Isitma istegi oturum cerezini kurar; boylece sonraki
+    istekler gercek sayfayi alir.
+    """
+    import requests
+
+    session = requests.Session()
+    if headers:
+        session.headers.update(headers)
+    if warmup:
+        try:
+            http_get(warmup, headers=headers, timeout=30, session=session)
+        except requests.RequestException:
+            pass
+    return session
+
+
+def http_download(url, dest, headers=None, timeout=60, attempts=None,
+                  chunk_size=65536):
+    """Dosyayi akitarak indirir; kesintide bastan dener.
+
+    Once `<dest>.part` dosyasina yazilir, tamamlaninca `os.replace` ile yerine
+    konur: yarim indirme iyi dosyayi ezmez.  Donus: (basarili, hata, deneme).
+    """
+    import requests
+
+    total = attempts or http_attempts()
+    tmp = f"{dest}.part"
+    last = None
+    for attempt in range(1, total + 1):
+        try:
+            with requests.get(url, headers=headers, stream=True,
+                              timeout=timeout) as response:
+                response.raise_for_status()
+                with open(tmp, "wb") as fh:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            fh.write(chunk)
+            os.replace(tmp, dest)
+            return True, None, attempt
+        except requests.RequestException as exc:
+            if not _http_retryable(requests, exc):
+                _http_remove(tmp)
+                return False, exc, attempt
+            last = exc
+        except OSError as exc:
+            _http_remove(tmp)
+            return False, exc, attempt
+        if attempt < total:
+            _http_sleep(attempt)
+    _http_remove(tmp)
+    return False, last, total
+
+
+def _http_remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def today_str():
     return dt.datetime.now().strftime("%d/%m/%y")
 
@@ -96,6 +291,12 @@ def norm_name(s):
 
 def clean(s):
     return re.sub(r"\s+", " ", (s or "").replace("\xa0", " ")).strip()
+
+
+def yaml_title(title):
+    """Render a title as a safely quoted YAML scalar."""
+    safe = (title or "").replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{safe}"'
 
 
 def slugify(s):
@@ -328,32 +529,64 @@ def write_note_file(path, content):
     writeMdReport(path, out + "\n")
 
 
+# Keep in sync with plugin/zettelskeleton.zet (manual notes via NewNote).
+HEADER_TAIL = (
+    'toc-title: "İçindekiler"',
+    'tableTitle: "Tablo"',
+    'lotTitle: "Tablolar"',
+    'reference-section-title: "Kaynakça"',
+    'figureTitle: "Şekil"',
+    'colorlinks: true',
+)
+
+_UNSET = object()
+
+
+def _yaml_kv(key, value, compact_empty=False):
+    """`key: value`, or bare `key:` when compact_empty and value is empty."""
+    if compact_empty and (value is None or value == ""):
+        return f"{key}:"
+    return f"{key}: {value}"
+
+
 def build_header(idno, title, country_field, date=None, modify=None,
-                 n_type="note", keywords=None, bibfile=None, author=None):
-    date = date or dt.datetime.now().strftime("%d/%m/%y")
+                 n_type="note", keywords=None, bibfile=None, author=None,
+                 *, date_fmt="%d/%m/%y", citation_style=None,
+                 institude=_UNSET, extra_fields=None, lof_title=False,
+                 compact_empty=False):
+    date = date or dt.datetime.now().strftime(date_fmt)
     author = script_name() if author is None else author
-    keywords_line = f"keywords: {keywords}\n" if keywords else "keywords:\n"
-    return (
-        "---\n"
-        f"id: {idno}\n"
-        f"author: {author}\n"
-        f"title: {title}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        f"country: {country_field}\n"
-        "institude: \n"
-        f"n_type: {n_type}\n"
-        + keywords_line +
-        f"bibliography: {bibfile or ''}\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        'toc-title: "İçindekiler"\n'
-        'tableTitle: "Tablo"\n'
-        'lotTitle: "Tablolar"\n'
-        'reference-section-title: "Kaynakça"\n'
-        'figureTitle: "Şekil"\n'
-        "colorlinks: true\n"
-        "---\n"
-    )
+
+    if institude is _UNSET:
+        inst_line = "institude: "        # legacy default: empty value
+    elif institude:
+        inst_line = f"institude: {institude}"
+    else:
+        inst_line = "institude:"         # deliberately empty
+
+    lines = [
+        "---",
+        f"id: {idno}",
+        f"author: {author}",
+        f"title: {title}",
+        f"date: {date}",
+        f"modify: {modify or ''}",
+        _yaml_kv("country", country_field, compact_empty),
+        inst_line,
+        f"n_type: {n_type}",
+    ]
+    for key, value in (extra_fields or ()):
+        lines.append(f"{key}: {value}")
+    lines.append(_yaml_kv("keywords", keywords, compact_empty)
+                 if keywords else "keywords:")
+    lines.append(_yaml_kv("bibliography", bibfile or "", compact_empty))
+    lines.append(f"citation-style: {citation_style or CITATION_STYLE}")
+    lines.extend(HEADER_TAIL[:3])
+    if lof_title:
+        lines.append('lofTitle: "Şekiller"')
+    lines.extend(HEADER_TAIL[3:])
+    lines.append("---")
+    return "\n".join(lines) + "\n"
 
 
 def write_note(path, idno, title, body, country_field, source_url,
@@ -533,6 +766,12 @@ KIND = {
         index_n_type="obn dizin ticaret",
         hub_h2="Trademap Ticaret Raporları",
     ),
+    "leaders": dict(
+        index_suffix="Liderler ve Kabine",
+        n_types=("obn leaders",),
+        index_n_type="obn dizin leaders",
+        hub_h2="Liderler ve Kabine",
+    ),
     "dbwn": dict(
         index_suffix="Dışişleri Bakanlığı Web Notları",
         n_types=("obn dbwn",),
@@ -634,6 +873,12 @@ KIND = {
         n_types=("obn kagm",),
         index_n_type="obn dizin kagm",
         hub_h2="Kalkınma Ajansları Genel Müdürlüğü Bilgi Notları",
+    ),
+    "cv": dict(
+        index_suffix="CV Notları",
+        n_types=("obn cv",),
+        index_n_type="obn dizin cv",
+        hub_h2="CV Notları",
     ),
 }
 
@@ -815,6 +1060,30 @@ def find_obn_global_hub():
     return None
 
 
+def find_hub_by_type(n_type):
+    """Verilen tam n_type degerine sahip en yeni hub notunu bulur."""
+    out = notes_dir()
+    if not os.path.isdir(out):
+        return None
+    cands = []
+    for fname in os.listdir(out):
+        if not fname.lower().endswith(".md"):
+            continue
+        path = os.path.join(out, fname)
+        info = parse_front_matter(path)
+        if (info.get("n_type", "") or "").strip() != n_type:
+            continue
+        try:
+            idno = int(info.get("id", "0"))
+        except (TypeError, ValueError):
+            idno = 0
+        cands.append((idno, path))
+    if not cands:
+        return None
+    cands.sort(key=lambda x: x[0], reverse=True)
+    return cands[0][1]
+
+
 def _is_h1(line):
     return re.match(r"^#(?!#)\s", line) is not None
 
@@ -905,30 +1174,6 @@ def _upsert_subsection(before, wrapper_title, sub_title, link_text, target_rel):
 def _note_title(path):
     info = parse_front_matter(path)
     return clean(info.get("title", "")).strip('"')
-
-
-def _upsert_wrapper_link(before, wrapper_title, link_text, target_rel):
-    """before icinde '# wrapper_title' basligini bulur/olusturur ve altina
-    tek bir link satiri yerlestirir (varsa diger alt satirlari temizler)."""
-    wrapper_re = r"^#(?!#)\s*" + re.escape(wrapper_title) + r"\s*$"
-    wrapper_idx = -1
-    for i, ln in enumerate(before):
-        if re.match(wrapper_re, ln):
-            wrapper_idx = i
-            break
-    if wrapper_idx < 0:
-        if before and before[-1].strip() != "":
-            before.append("")
-        before += [f"# {wrapper_title}", ""]
-        wrapper_idx = len(before) - 2
-    wrapper_end = len(before)
-    for i in range(wrapper_idx + 1, len(before)):
-        if _is_h1(before[i]):
-            wrapper_end = i
-            break
-    link_line = f"- [{link_text}]({target_rel})"
-    before[wrapper_idx + 1:wrapper_end] = ["", link_line, ""]
-    return before
 
 
 def _upsert_link_under(before, wrapper_title, link_text, target_rel):
@@ -1215,13 +1460,75 @@ def update_country_hub(iso3, kind, index_path, index_title,
         body_before = rest[:]
     obn_rel = os.path.relpath(obn, os.path.dirname(hub))
     link_text = f"{clean(display or ident)} Otomatik Bilgi Notları"
-    body_before = _upsert_wrapper_link(body_before, OBN_SECTION,
-                                       link_text, obn_rel)
+    # Additive: preserve manual links/notes under the section.  Replacing the
+    # whole block here used to delete anything the user had added.
+    body_before = _upsert_link_under(body_before, OBN_SECTION,
+                                     link_text, obn_rel)
     if body_after and body_before and body_before[-1].strip() != "":
         body_before = body_before + [""]
     writeMdReport(hub, "\n".join(head + body_before + body_after).rstrip("\n") + "\n")
     print(f"Güncellendi (hub): {hub}")
     return hub
+
+
+def _ensure_country_obn(iso3, country_field, display):
+    """Ulke hub'i ve OBN sayfasini bulur/olusturur; global kayitlari gunceller.
+    Donus: (hub_path, obn_path) veya (None, None)."""
+    display = display or (lu.iso3ToName(iso3) if (iso3 and iso3 in lu.iso3) else iso3)
+    country_field = country_field or ((iso3 or "").lower() or slugify(display or ""))
+    ident = iso3 or country_field
+
+    hub = find_country_hub(ident)
+    if not hub:
+        if not iso3:
+            print(f"UYARI {display or ident} için ISO3 yok; "
+                  "ülke hub'ı oluşturulmadı/bağlanmadı")
+            return None, None
+        if not autohub():
+            print(f"UYARI {iso3} için ülke hub'ı bulunamadı; hub linki atlandı")
+            return None, None
+        hub = _create_country_hub(iso3, country_field, display)
+
+    obn = find_obn_hub(ident)
+    if not obn:
+        obn = _create_obn_hub(iso3, country_field, display, hub)
+
+    obn_title = (_note_title(obn)
+                 or f"{clean(display or ident)} Otomatik Bilgi Notları")
+    update_hub(OBN_HUB_FILE, OBN_HUB_TITLE, obn_title, obn,
+               n_type=OBN_HUB_N_TYPE, keywords="obn hub")
+    _link_index_to_obn_hub()
+    return hub, obn
+
+
+def link_note_to_obn(iso3, country_field, display, note_path,
+                     section_title, link_text=None):
+    """Bir notu ulke OBN sayfasina dogrudan baglar (indeks notu olmadan).
+    Ulke hub'i ve OBN sayfasi yoksa olusturur; OBN linkini hub'a ekler."""
+    hub, obn = _ensure_country_obn(iso3, country_field, display)
+    if not obn:
+        return None
+
+    with open(obn, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    head, body_before, body_after = _split_front_back(lines)
+    rel = os.path.relpath(note_path, os.path.dirname(obn))
+    title = link_text or _note_title(note_path) or os.path.basename(note_path)
+    body_before = _upsert_subsection(body_before, OBN_SECTION,
+                                     section_title, title, rel)
+    _write_back(obn, head, body_before, body_after)
+    print(f"Güncellendi (obn): {obn}")
+
+    if hub:
+        with open(hub, encoding="utf-8") as f:
+            hlines = f.read().splitlines()
+        hhead, hbefore, hafter = _split_front_back(hlines)
+        obn_rel = os.path.relpath(obn, os.path.dirname(hub))
+        hub_link = f"{clean(display or iso3)} Otomatik Bilgi Notları"
+        hbefore = _upsert_link_under(hbefore, OBN_SECTION, hub_link, obn_rel)
+        _write_back(hub, hhead, hbefore, hafter)
+        print(f"Güncellendi (hub): {hub}")
+    return obn
 
 
 MAP_IMG_RE = re.compile(r"^\s*!\[[^\]]*\]\([^)]*data/img/maps/[^)]*\)")
@@ -1372,6 +1679,98 @@ def remove_hub_entry(hub_file, target_path):
     return hub_path
 
 
+_HUB_LINK_RE = re.compile(r"\[[^\]]*\]\(((?:[^()\n]|\([^()\n]*\))*)\)")
+
+
+def _hub_link_alive(target):
+    if not target:
+        return True
+    target = target.strip()
+    if ("://" in target or target.startswith("#")
+            or target.startswith("mailto:")):
+        return True
+    target = target.split("#", 1)[0]
+    if not target or not target.lower().endswith(".md"):
+        return True
+    path = target if os.path.isabs(target) else os.path.join(notes_dir(), target)
+    return os.path.exists(path)
+
+
+def prune_hub_links(hub_path):
+    """Hub notundan hedefi bulunmayan .md linklerini kaldirir.
+    Hub bos kalirsa siler ve obn-hub.md'deki linkini kaldirir."""
+    if not hub_path:
+        return None
+    if not os.path.isabs(hub_path):
+        hub_path = os.path.join(notes_dir(), hub_path)
+    if not os.path.exists(hub_path):
+        return None
+    with open(hub_path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    head, body_before, body_after = _split_front_back(lines)
+    kept = []
+    removed = 0
+    for ln in body_before:
+        match = _HUB_LINK_RE.search(ln)
+        if match and not _hub_link_alive(match.group(1)):
+            removed += 1
+            continue
+        kept.append(ln)
+    if not removed:
+        return hub_path
+    if not any(_HUB_LINK_RE.search(ln) for ln in kept):
+        remove_note(hub_path)
+        print(f"Silindi (boş hub): {hub_path}")
+        if os.path.basename(hub_path) == OBN_HUB_FILE:
+            _remove_index_link(os.path.basename(hub_path))
+        else:
+            remove_hub_entry(OBN_HUB_FILE, hub_path)
+        return None
+    _write_back(hub_path, head, kept, body_after)
+    print(f"Güncellendi (hub): {hub_path}")
+    return hub_path
+
+
+def remove_link_from_section(path, section_title, target_path):
+    """path icindeki '## section_title' blogundan target_path linkini kaldirir."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    head, body_before, body_after = _split_front_back(lines)
+    section_re = r"^##(?!#)\s*" + re.escape(section_title) + r"\s*$"
+    start = -1
+    for i, ln in enumerate(body_before):
+        if re.match(section_re, ln):
+            start = i
+            break
+    if start < 0:
+        return path
+
+    end = len(body_before)
+    for i in range(start + 1, len(body_before)):
+        if _is_h1(body_before[i]) or _is_h2(body_before[i]):
+            end = i
+            break
+
+    base = os.path.basename(target_path)
+    link_re = re.compile(r"\[[^\]]*\]\(((?:[^()\n]|\([^()\n]*\))*)\)")
+    kept = []
+    removed = 0
+    for ln in body_before[start + 1:end]:
+        match = link_re.search(ln)
+        if match and os.path.basename(match.group(1).split("#", 1)[0]) == base:
+            removed += 1
+            continue
+        kept.append(ln)
+    if not removed:
+        return path
+    body_before[start + 1:end] = kept
+    _write_back(path, head, body_before, body_after)
+    print(f"Güncellendi (obn): {path}")
+    return path
+
+
 def _remove_obn_subsection(iso3, kind, country_field, display):
     ident = iso3 or country_field
     obn = find_obn_hub(ident)
@@ -1434,13 +1833,19 @@ def delete_country_type(iso3, n_type, kind, country_field=None, display=None):
             _remove_obn_subsection(iso3, kind, country_field, display)
             _maybe_delete_obn(iso3, country_field, display)
     else:
+        _remove_obn_subsection(iso3, kind, country_field, display)
         _maybe_delete_obn(iso3, country_field, display)
     return 0
 
 
-def delete_country_obn(iso3, country_field=None, display=None):
+def delete_country_obn(iso3, country_field=None, display=None,
+                       delete_data=False):
     """Ulkenin tum otomatik bilgi notlarini ve OBN sayfasini siler.
-    Ulke hub'i (dashboard), index.md ve harita korunur."""
+    Ulke hub'i (dashboard), index.md ve harita korunur.
+
+    `delete_data` verilmedikce `data/<key>/wbdata` JSON onbellegi korunur;
+    silinirse yalnizca o klasor kalkar, ulke klasorundeki belgeler kalir.
+    """
     display = display or (lu.iso3ToName(iso3) if iso3 in lu.iso3 else iso3)
     country_field = country_field or (iso3.lower() if iso3 else slugify(display))
     for kind, cfg in KIND.items():
@@ -1451,6 +1856,16 @@ def delete_country_obn(iso3, country_field=None, display=None):
                                        (cfg["index_n_type"],)):
             remove_note(path)
             print(f"Silindi: {path}")
+    if delete_data:
+        removed, files, size = remove_wb_cache(iso3, country_field)
+        if removed:
+            print(f"Silindi: {wb_cache_dir(iso3, country_field)} "
+                  f"({files} JSON, {human_size(size)})")
+    else:
+        cache = wb_cache_dir(iso3, country_field)
+        if os.path.isdir(cache):
+            files, size = wb_cache_stats(cache)
+            print(f"Korundu: {cache} ({files} JSON, {human_size(size)})")
     ident = iso3 or country_field
     obn = find_obn_hub(ident)
     if obn:

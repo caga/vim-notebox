@@ -386,7 +386,9 @@ function! s:CreateYamlHeader(source_file, output_file, file_count, file_list, id
     let header = []
     call add(header, '---')
     call add(header, 'id: ' . a:id)
-    call add(header, 'author: Çağatay Çakır')
+    let author_name = exists('g:notes_author') && g:notes_author !~ '^\s*$'
+                \ ? g:notes_author : 'Çağatay Çakır'
+    call add(header, 'author: ' . author_name)
     call add(header, 'title: "' . combined_title . '"')
     call add(header, 'date: ' . date_string)
     call add(header, 'n_type: output')
@@ -728,7 +730,7 @@ function! s:MarkdownCombineHelp()
     echo "  - Çıktı: bibfiles/ID.bib (ID ile aynı)"
     echo ""
     echo "YAML Header Alanları:"
-    echo "  - author: Çağatay Çakır"
+    echo "  - author: g:notes_author (varsayılan: Çağatay Çakır)"
     echo "  - bibliography: bibfiles/ID.bib (e seçeneğinde)"
     echo "  - citation-style: style/ieee-with-url.csl"
     echo ""

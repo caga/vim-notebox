@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getTbupNotes.py entegrasyonu (asenkron).
 # Bir ulkenin T.C. Ticaret Bakanligi "Ulke Profili" PDF'ini indirip notlara
 # cevirir, notlari ulke tbup hub'ina baglar ve o hub notunu acar.
@@ -13,6 +15,18 @@ endif
 
 if !exists('g:tbup_script')
 	g:tbup_script = cdir .. '/getTbupNotes.py'
+endif
+
+if !exists('g:tbup_chart_mode')
+	g:tbup_chart_mode = 'table+mermaid'
+endif
+
+if !exists('g:tbup_disambiguate_titles')
+	g:tbup_disambiguate_titles = 1
+endif
+
+if !exists('g:tbup_skip_ekler')
+	g:tbup_skip_ekler = 0
 endif
 
 var s_lines: list<string> = []
@@ -40,6 +54,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -79,12 +94,14 @@ def ExitCb(_j: job, status: number)
 		endif
 		execute 'edit ' .. fnameescape(target)
 		if status != 0
-			echom 'Tbupfetch tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
+			echom notebox.Label('getTbupNotes.py')
+				.. ' — tamamlandı (bazı adımlar HATA verdi; çıktıya bakın)'
 		else
-			echom 'Tbupfetch tamamlandı'
+			echom notebox.Label('getTbupNotes.py') .. ' — tamamlandı'
 		endif
 	else
-		echom 'Tbupfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getTbupNotes.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -113,19 +130,20 @@ def GateTbup(box: string, name: string): dict<any>
 		.. ' && ' .. shellescape(expand(g:tbup_python))
 		.. ' ' .. shellescape(expand(g:tbup_script))
 		.. ' ' .. shellescape(name) .. ' --check'
+	notebox.Checking('getTbupNotes.py')
 	var r = ParseReport(systemlist(cmd))
 	if r.exists == ''
 		return {run: true, target: ''}
 	endif
 	if r.fresh == 1
-		echom 'tbup atlandı: ' .. r.text .. ' ('
-			.. get(g:, 'tbup_report_max_age_days', 30) .. ' günden yeni)'
+		echom notebox.Label('getTbupNotes.py') .. ' atlandı: ' .. r.text
+			.. ' (' .. get(g:, 'tbup_report_max_age_days', 30) .. ' günden yeni)'
 		return {run: false, target: r.exists}
 	endif
 	if get(g:, 'tbup_report_ask', 1) != 0
-		if confirm(r.text .. "\nYeni rapor oluşturulsun mu?",
-			"&Evet\n&Hayır", 2) != 1
-			echom 'tbup atlandı: ' .. r.text
+		if confirm(notebox.Label('getTbupNotes.py') .. "\n" .. r.text
+			.. "\nYeni rapor oluşturulsun mu?", "&Evet\n&Hayır", 2) != 1
+			echom notebox.Label('getTbupNotes.py') .. ' atlandı: ' .. r.text
 			return {run: false, target: r.exists}
 		endif
 	endif
@@ -147,19 +165,25 @@ def SetEnv(box: string)
 	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
 	$TBUP_PDF_DIR = get(g:, 'tbup_pdfdir', box .. '/tbupPdfs')
 	$NOTES_TBUP_REPORT_MAX_AGE_DAYS = string(get(g:, 'tbup_report_max_age_days', 30))
+	$TBUP_CHART_MODE = get(g:, 'tbup_chart_mode', 'table+mermaid')
+	$TBUP_DISAMBIGUATE = get(g:, 'tbup_disambiguate_titles', 1) ? '1' : '0'
+	$TBUP_SKIP_EKLER = get(g:, 'tbup_skip_ekler', 0) ? '1' : '0'
 enddef
 
 
-def SyncRun(box: string, name: string)
-	var gate = GateTbup(box, name)
-	if !gate.run
-		OpenTarget(gate.target)
-		return
+def SyncRun(box: string, name: string, force: number)
+	if force == 0
+		var gate = GateTbup(box, name)
+		if !gate.run
+			OpenTarget(gate.target)
+			return
+		endif
 	endif
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(expand(g:tbup_python))
 		.. ' ' .. shellescape(expand(g:tbup_script))
 		.. ' --yes --force ' .. shellescape(name)
+	notebox.Busy('getTbupNotes.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	var target = ''
@@ -172,15 +196,39 @@ def SyncRun(box: string, name: string)
 enddef
 
 
-def g:TbupFetch(country: string)
+def g:TbupFetch(request: string)
 	if s_running
-		echom 'Tbupfetch zaten çalışıyor'
+		echom notebox.Label('getTbupNotes.py') .. ' — zaten çalışıyor'
 		return
 	endif
 
-	var name = country
+	var spec = request
+	var charts = ''
+	var force = 0
+	if spec =~ '--force'
+		force = 1
+		spec = substitute(spec, '\s*--force', '', '')
+	endif
+	if spec =~ '--charts='
+		charts = matchstr(spec, '--charts=\zs\S\+')
+		spec = substitute(spec, '\s*--charts=\S\+', '', '')
+	endif
+	if spec =~ '--no-disambiguate'
+		g:tbup_disambiguate_titles = 0
+		spec = substitute(spec, '\s*--no-disambiguate', '', '')
+	endif
+	if spec =~ '--skip-ekler'
+		g:tbup_skip_ekler = 1
+		spec = substitute(spec, '\s*--skip-ekler', '', '')
+	endif
+	if charts != ''
+		g:tbup_chart_mode = charts
+	endif
+
+	var name = trim(spec)
+
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getTbupNotes.py'))
 	endif
 	if name == ''
 		return
@@ -197,14 +245,16 @@ def g:TbupFetch(country: string)
 	SetEnv(box)
 
 	if get(g:, 'tbup_async', 1) == 0
-		SyncRun(box, name)
+		SyncRun(box, name, force)
 		return
 	endif
 
-	var gate = GateTbup(box, name)
-	if !gate.run
-		OpenTarget(gate.target)
-		return
+	if force == 0
+		var gate = GateTbup(box, name)
+		if !gate.run
+			OpenTarget(gate.target)
+			return
+		endif
 	endif
 
 	s_lines = []
@@ -217,7 +267,7 @@ def g:TbupFetch(country: string)
 	silent! file [Tbupfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Tbupfetch başladı (arka planda)...'
+	notebox.Busy('getTbupNotes.py', name)
 
 	var cmd: list<string> = [expand(g:tbup_python), expand(g:tbup_script),
 		'--yes', '--force', name]
@@ -229,7 +279,7 @@ enddef
 def g:TbupDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getTbupNotes.py'))
 	endif
 	if name == ''
 		return

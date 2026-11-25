@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getCountry.py entegrasyonu (asenkron).
 # Bir ulke icin tum otomatik sayfalari uretir (dbwn, WB gostergeleri, tek
 # tarafli ticaret, ikili ticaret (TUR), harita), ciktilari canli akitir ve
@@ -18,6 +20,10 @@ endif
 
 if !exists('g:country_map_height')
 	g:country_map_height = 350
+endif
+
+if !exists('g:tradeapp_dir')
+	g:tradeapp_dir = '~/calisma/tmapp'
 endif
 
 var s_lines: list<string> = []
@@ -45,6 +51,7 @@ def OutCb(_ch: channel, msg: string)
 		var line = strpart(s_partial, 0, nl)
 		s_partial = strpart(s_partial, nl + 1)
 		LogLine(line)
+		notebox.Step(line)
 	endwhile
 enddef
 
@@ -102,9 +109,10 @@ def ExitCb(_j: job, status: number)
 		# Günlüğü KAPATMA: hangi adımın düştüğü burada görünür.
 		var summary = FailureSummary()
 		if summary != ''
-			echom 'Countryfetch: sorunlu adımlar — ' .. summary
+			echom notebox.Label('getCountry.py') .. ' — sorunlu adımlar — ' .. summary
 		else
-			echom 'Countryfetch: adımlardan biri başarısız — ayrıntı [Countryfetch] penceresinde'
+			echom notebox.Label('getCountry.py')
+				.. ' — adımlardan biri başarısız; ayrıntı [Countryfetch] penceresinde'
 		endif
 		return
 	endif
@@ -119,9 +127,10 @@ def ExitCb(_j: job, status: number)
 			win_gotoid(s_orig_win)
 		endif
 		execute 'edit ' .. fnameescape(target)
-		echom 'Countryfetch tamamlandı'
+		echom notebox.Label('getCountry.py') .. ' — tamamlandı'
 	else
-		echom 'Countryfetch bitti ama hedef üretilemedi; günlük penceresine bakın'
+		echom notebox.Label('getCountry.py')
+			.. ' — bitti ama hedef üretilemedi; günlük penceresine bakın'
 	endif
 enddef
 
@@ -137,7 +146,7 @@ enddef
 
 
 def GateReport(box: string, name: string, script: string, label: string,
-		prefix: string): number
+		prefix: string, year: string = ''): number
 	# 1 = rapor uret, 0 = atla (taze veya kullanici hayir dedi)
 	if get(g:, prefix .. '_report_check', 1) == 0
 		return 1
@@ -145,7 +154,12 @@ def GateReport(box: string, name: string, script: string, label: string,
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(expand(g:country_python))
 		.. ' ' .. shellescape(cdir .. '/' .. script)
-		.. ' ' .. shellescape(name) .. ' --check'
+		.. ' ' .. shellescape(name)
+	if year != ''
+		cmd ..= ' ' .. shellescape(year)
+	endif
+	cmd ..= ' --check'
+	notebox.Checking(script)
 	var out = systemlist(cmd)
 	var exists = ReportField(out, 'REPORT_EXISTS')
 	if exists == ''
@@ -155,12 +169,14 @@ def GateReport(box: string, name: string, script: string, label: string,
 	var text = ReportField(out, 'REPORT_AGE_TEXT')
 	var max_age = get(g:, prefix .. '_report_max_age_days', 7)
 	if fresh == 1
-		echom label .. ' atlandı: ' .. text .. ' (' .. max_age .. ' günden yeni)'
+		echom notebox.Label(script) .. ' atlandı: ' .. text
+			.. ' (' .. max_age .. ' günden yeni)'
 		return 0
 	endif
 	if get(g:, prefix .. '_report_ask', 1) != 0
-		if confirm(text .. "\nYeni rapor oluşturulsun mu?", "&Evet\n&Hayır", 2) != 1
-			echom label .. ' atlandı: ' .. text
+		if confirm(notebox.Label(script) .. "\n" .. text
+			.. "\nYeni rapor oluşturulsun mu?", "&Evet\n&Hayır", 2) != 1
+			echom notebox.Label(script) .. ' atlandı: ' .. text
 			return 0
 		endif
 	endif
@@ -174,6 +190,9 @@ def SetEnv(box: string)
 	$NOTES_AUTOHUB = get(g:, 'notes_autohub', 1) ? '1' : '0'
 	$NOTES_MAP_HEIGHT = string(g:country_map_height)
 	$NOTES_REPORT_MAX_AGE_DAYS = string(get(g:, 'country_report_max_age_days', 7))
+	$TRADEAPP_DIR = expand(g:tradeapp_dir)
+	$NOTES_LEADERS_REPORT_MAX_AGE_DAYS = string(get(g:, 'leaders_report_max_age_days', 30))
+	$NOTES_WB_REPORT_MAX_AGE_DAYS = string(get(g:, 'wb_report_max_age_days', 7))
 	$NOTES_TBUP_REPORT_MAX_AGE_DAYS = string(get(g:, 'tbup_report_max_age_days', 30))
 	$NOTES_TUBITAK_REPORT_MAX_AGE_DAYS = string(get(g:, 'tubitak_report_max_age_days', 30))
 	$NOTES_KOSGEB_REPORT_MAX_AGE_DAYS = string(get(g:, 'kosgeb_report_max_age_days', 30))
@@ -182,12 +201,15 @@ def SetEnv(box: string)
 enddef
 
 
-def SyncRun(box: string, name: string)
+def SyncRun(box: string, name: string, year: string)
 	var extra = ''
-	if GateReport(box, name, 'getStmd.py', 'stmd', 'country') == 0
+	if GateReport(box, name, 'getLeaders.py', 'leaders', 'leaders') == 0
+		extra = extra .. ' --skip-leaders'
+	endif
+	if GateReport(box, name, 'getUlkeTrapor.py', 'stmd', 'country', year) == 0
 		extra = extra .. ' --skip-stmd'
 	endif
-	if GateReport(box, name, 'getTmd.py', 'tmd', 'country') == 0
+	if GateReport(box, name, 'getIkiliRapor.py', 'tmd', 'country', year) == 0
 		extra = extra .. ' --skip-tmd'
 	endif
 	if GateReport(box, name, 'getTbupNotes.py', 'tbup', 'tbup') == 0
@@ -205,11 +227,17 @@ def SyncRun(box: string, name: string)
 	if GateReport(box, name, 'getOtherBns.py', 'otherbn', 'otherbn') == 0
 		extra = extra .. ' --skip-otherbn'
 	endif
+	var year_arg = year == '' ? '' : ' --trade-year ' .. shellescape(year)
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(expand(g:country_python))
 		.. ' ' .. shellescape(expand(g:country_script))
-		.. ' ' .. shellescape(name) .. extra
+		.. ' ' .. shellescape(name) .. year_arg
+		.. extra
+	notebox.Busy('getCountry.py', name)
 	var out = systemlist(cmd)
+	for line in out
+		notebox.Step(line)
+	endfor
 	echom join(out, "\n")
 	var target = ''
 	for line in out
@@ -233,15 +261,22 @@ enddef
 
 def g:CountryFetch(country: string)
 	if s_running
-		echom 'Countryfetch zaten çalışıyor'
+		echom notebox.Label('getCountry.py') .. ' — zaten çalışıyor'
 		return
 	endif
 
-	var name = country
+	var parsed = notebox.SplitYear(country)
+	var name = parsed[0]
+	var year = parsed[1]
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getCountry.py'))
 	endif
 	if name == ''
+		return
+	endif
+	if year != '' && year !~ '^\d\{4}$'
+		echom notebox.Label('getCountry.py')
+			.. ' — yıl 4 haneli olmalı (ör. 2025): ' .. year
 		return
 	endif
 
@@ -256,7 +291,7 @@ def g:CountryFetch(country: string)
 	SetEnv(box)
 
 	if get(g:, 'country_async', 1) == 0
-		SyncRun(box, name)
+		SyncRun(box, name, year)
 		return
 	endif
 
@@ -270,13 +305,20 @@ def g:CountryFetch(country: string)
 	silent! file [Countryfetch]
 	s_logbuf = bufnr('%')
 	setlocal modifiable
-	echom 'Countryfetch başladı (arka planda)...'
 
-	var cmd: list<string> = [expand(g:country_python), expand(g:country_script), name]
-	if GateReport(box, name, 'getStmd.py', 'stmd', 'country') == 0
+	var cmd: list<string> = [expand(g:country_python), expand(g:country_script),
+		name]
+	if year != ''
+		cmd->add('--trade-year')
+		cmd->add(year)
+	endif
+	if GateReport(box, name, 'getLeaders.py', 'leaders', 'leaders') == 0
+		cmd->add('--skip-leaders')
+	endif
+	if GateReport(box, name, 'getUlkeTrapor.py', 'stmd', 'country', year) == 0
 		cmd->add('--skip-stmd')
 	endif
-	if GateReport(box, name, 'getTmd.py', 'tmd', 'country') == 0
+	if GateReport(box, name, 'getIkiliRapor.py', 'tmd', 'country', year) == 0
 		cmd->add('--skip-tmd')
 	endif
 	if GateReport(box, name, 'getTbupNotes.py', 'tbup', 'tbup') == 0
@@ -294,14 +336,16 @@ def g:CountryFetch(country: string)
 	if GateReport(box, name, 'getOtherBns.py', 'otherbn', 'otherbn') == 0
 		cmd->add('--skip-otherbn')
 	endif
+	var subject = year == '' ? name : name .. ' (' .. year .. ')'
+	notebox.Busy('getCountry.py', subject)
 	job_start(cmd, {out_cb: OutCb, err_cb: OutCb, exit_cb: ExitCb, cwd: box, mode: 'raw'})
 enddef
 
 
 def g:CountryDelete(country: string)
-	var name = country
+	var name = notebox.SplitYear(country)[0]
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getCountry.py'))
 	endif
 	if name == ''
 		return
@@ -319,10 +363,21 @@ def g:CountryDelete(country: string)
 		echom 'Silme iptal edildi'
 		return
 	endif
+	# JSON önbelleği (data/<iso3>/wbdata) ayrı sorulur; varsayılan koru.
+	# Klasördeki Raporlar/, ciktilar/, eski/ gibi belgeler hiç etkilenmez.
+	var extra = ''
+	var cache = notebox.WbCacheInfo(name, box)
+	if cache.exists && cache.files > 0
+		if confirm(printf('%s için JSON önbelleği de silinsin mi? (%s — %d dosya)',
+				name, cache.rel != '' ? cache.rel : cache.dir,
+				cache.files), "&Evet\n&Hayır", 2) == 1
+			extra = ' --delete-data'
+		endif
+	endif
 	var cmd = 'cd ' .. shellescape(box)
 		.. ' && ' .. shellescape(expand(g:country_python))
 		.. ' ' .. shellescape(expand(g:country_script))
-		.. ' ' .. shellescape(name) .. ' --delete'
+		.. ' ' .. shellescape(name) .. ' --delete' .. extra
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 	checktime

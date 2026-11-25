@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getMap.py entegrasyonu.
 # Aktif not kutusunda (g:notes_directory) bir ulkenin haritasini indirir,
 # data/img/maps/{iso3}.png olarak kaydeder ve imlece markdown resim linki ekler.
@@ -53,7 +55,7 @@ enddef
 def g:GmapFetch(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getMap.py'))
 	endif
 	if name == ''
 		return
@@ -66,19 +68,24 @@ def g:GmapFetch(country: string)
 	# 1) Indirmeden hedef yolu coz.
 	var map = ParseMap(RunGmap(name, '--path'))
 	if map == ''
-		echom 'Harita yolu bulunamadi (ulke cozulemedi?).'
+		echom notebox.Label('getMap.py')
+			.. ' — harita yolu bulunamadı (ülke çözülemedi?).'
 		return
 	endif
 
 	# 2) Dosya varsa yeniden indirmek icin sor.
 	if filereadable(map)
-		var choice = confirm('Harita zaten var. Yeniden indirilsin mi?', "&Evet\n&Hayır", 2)
+		var choice = confirm(notebox.Label('getMap.py')
+			.. "\nHarita zaten var. Yeniden indirilsin mi?",
+			"&Evet\n&Hayır", 2)
 		if choice == 1
+			notebox.Busy('getMap.py', name)
 			var out = RunGmap(name, '--force')
 			map = ParseMap(out)
 			echom join(out, "\n")
 		endif
 	else
+		notebox.Busy('getMap.py', name)
 		var out = RunGmap(name, '')
 		map = ParseMap(out)
 		echom join(out, "\n")

@@ -14,7 +14,13 @@ Rules:
   * Every heading that has non-blank text directly beneath it (before the next
     heading) becomes its own note, titled with the short heading name.
   * Headings that only contain sub-headings (no own text) produce no note.
-  * The "EKLER" chapter and its subtree are skipped entirely.
+  * The "EKLER" chapter is kept by default (EK-1…EK-6 tables are useful data
+    sources).  Use --skip-ekler or $TBUP_SKIP_EKLER=1 to omit it.
+  * Charts that pymupdf4llm emits as raw "picture text" are rebuilt from the
+    PDF geometry into a markdown table and a mermaid diagram (see
+    tbupcharts.py).  Country pies use EK-3/EK-4 as their data source.
+  * Duplicate note titles (e.g. the two "İhracat" sections) get a parent
+    qualifier such as "İhracat (Ürün Grupları)" / "İhracat (Ülkeler)".
   * The per-country hub note links the notes (flat list + nested outline).
   * Section notes are reused across runs via their `tbup_key` field.
 
@@ -31,15 +37,18 @@ Two modes (auto-detected):
     index is maintained here.
 
 Usage:
-    getTbupNotes.py <pdf|country|iso3> [iso3] [--headings] [--dir DIR]
-                    [--refresh] [--download-only] [--yes] [--no-prune]
-                    [--check] [--force]
+    ./getTbupNotes.py <pdf|country|iso3> [iso3] [--headings] [--dir DIR]
+                      [--box DIR] [--refresh] [--download-only] [--yes]
+                      [--no-prune] [--check] [--force] [--charts MODE]
+                      [--no-disambiguate] [--skip-ekler]
 
     <pdf|country|iso3>  a PDF path, a Turkish country name, or an ISO3 code
     iso3                optional ISO-3166 alpha-3 code (e.g. nzl)
+    --box DIR           note box (default: $NOTES_DIR or cwd)
     --headings          dry run: print the outline and the planned
                         new/updated/orphan notes, without writing anything
-    --dir DIR           PDF download folder (default: tbupPdfs, or TBUP_PDF_DIR)
+    --dir DIR           PDF download folder (default: <box>/tbupPdfs, or
+                        TBUP_PDF_DIR)
     --refresh           re-scrape the ticaret.gov.tr region/country map
     --download-only     download the PDF for a country and stop
     --yes               auto-confirm deletion of orphan section notes
@@ -47,6 +56,11 @@ Usage:
     --check             only report the existing profile's age (no download,
                         no writes); prints REPORT_* lines
     --force             ignore the freshness gate and regenerate
+    --charts MODE       chart output: table+mermaid (default), table,
+                        mermaid, image (debug fallback) or text (legacy).
+                        Also settable with $TBUP_CHART_MODE.
+    --no-disambiguate   keep the raw heading titles (no parent qualifier)
+    --skip-ekler        do not generate EK-1…EK-6 notes
 
 Freshness gate: if the per-country profile index exists and is newer than
 NOTES_TBUP_REPORT_MAX_AGE_DAYS (default 30) days, regeneration is skipped
@@ -58,13 +72,16 @@ import re
 import sys
 import datetime as dt
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _cli
+
+_cli.init()
 
 import pymupdf
 import pymupdf4llm
 
 import cnlook as lu
 import getTbupPdf
+import tbupcharts
 
 # --- notebox shim: present inside the vim-notebox plugin, absent standalone --
 try:
@@ -99,6 +116,33 @@ HOWPUBLISHED = "ticaret.gov.tr, T.C. Ticaret Bakanlığı"
 TOC_TITLES = {"icindekiler", "tableofcontents", "contents", "index",
               "listoffigures", "listoftables"}
 EXCLUDED_CHAPTER_PREFIX = "ekler"
+
+# Normalised chapter / section names used to repair pymupdf4llm's heading
+# levels.  The Trade Ministry profiles use slightly different font styling in
+# each PDF, so the markdown heading depth is not reliable on its own.
+CHAPTER_TITLES = {
+    "genelbilgiler", "genelekonomikdurum", "disticaret",
+    "dogrudanyabanciyatirimlar", "turkiyeileticaret", "ekler",
+}
+SECTION_TITLES = {
+    "geneldurum", "sektorler",
+    "baslicaurunleritibariiledisticaret",
+    "baslicaulkeleritibariiledisticaret",
+    "yatirimiliskileri",
+}
+SUBTITLE_TITLES = {"ihracat", "ithalat"}
+
+QUALIFIER_BY_PARENT = {
+    "baslicaurunleritibariiledisticaret": "Ürün Grupları",
+    "baslicaulkeleritibariiledisticaret": "Ülkeler",
+}
+QUALIFIER_BY_CHAPTER = {
+    "disticaret": "Dış Ticaret",
+    "turkiyeileticaret": "Türkiye ile Ticaret",
+    "dogrudanyabanciyatirimlar": "Doğrudan Yabancı Yatırımlar",
+}
+# These titles are ambiguous even when they occur only once in a profile.
+ALWAYS_QUALIFY = {"ihracat", "ithalat", "geneldurum"}
 
 
 def notes_dir():
@@ -168,12 +212,61 @@ def yaml_title(title: str) -> str:
     return f'"{safe}"'
 
 
+EK_NOTE_TITLE_RE = re.compile(r"^\s*EK[-\s]?\d+\s*:", re.I)
+EK_UNIT_RE = re.compile(
+    r"\s*\(\s*(?:1[,.\s]?000|bin)\s*dolar\s*\)\s*$", re.I)
+
+
+def is_ek_title(title: str) -> bool:
+    return bool(EK_NOTE_TITLE_RE.match(title or ""))
+
+
+def strip_ek_unit(title: str) -> str:
+    """Drop the trailing thousand-dollar unit from an EK note title."""
+    if not is_ek_title(title):
+        return title
+    return EK_UNIT_RE.sub("", title).strip()
+
+
+def strip_ek_units_from_body(markdown: str) -> str:
+    """Remove the unit from EK headings and table captions in note body."""
+    out = []
+    for line in markdown.splitlines():
+        match = re.match(r"^(\s*(?:#{1,6}\s+|:\s+))(.*)$", line)
+        if match and is_ek_title(match.group(2)):
+            line = match.group(1) + strip_ek_unit(match.group(2))
+        out.append(line)
+    return "\n".join(out)
+
+
+def resolve_ek_link_placeholders(markdown: str, links: dict) -> str:
+    """Expand ``{{tbup-ek-link:key}}`` markers into EK note links."""
+    def replace(match):
+        key = match.group(1).strip()
+        target = links.get(key)
+        if target:
+            title, filename = target
+            return f"Detaylı bilgi için [{title}]({filename})"
+        return "Detaylı bilgi için EK tablosu"
+
+    markdown = tbupcharts.EK_LINK_PLACEHOLDER_RE.sub(replace, markdown)
+    # Any page without a resolved chart link still gets the new wording.
+    return tbupcharts.EK_LINK_TEXT_RE.sub(
+        "Detaylı bilgi için EK tablosu", markdown)
+
+
 # ---------------------------------------------------------------------------
 # Markdown structure
 # ---------------------------------------------------------------------------
 
-def page_markdown(doc):
-    """Return the list of per-page markdown blocks produced by pymupdf4llm."""
+def page_markdown(doc, iso3=None, box=None, mode="table+mermaid",
+                   dry_run=False):
+    """Return (pages, chart_titles) for the document.
+
+    Every ``<!-- Start of picture text -->`` chart block is replaced by a
+    reconstructed table and/or mermaid diagram.  ``chart_titles`` lets the
+    heading parser drop chart captions that pymupdf4llm mistook for headings.
+    """
     chunks = pymupdf4llm.to_markdown(
         doc,
         page_chunks=True,
@@ -181,7 +274,19 @@ def page_markdown(doc):
         footer=False,
         show_progress=False,
     )
-    return [c["text"] for c in chunks]
+    ek = tbupcharts.parse_ek_tables(doc)
+    pages = []
+    chart_titles = []
+    for pno, chunk in enumerate(chunks):
+        text = chunk["text"]
+        if box:
+            text, titles = tbupcharts.prepare_page(
+                doc, pno, text, ek, box=box, iso3=iso3 or "tbup",
+                mode=mode, dry_run=dry_run)
+            chart_titles.extend(titles)
+        text = tbupcharts.fix_ek_tables(doc[pno], text)
+        pages.append(text)
+    return pages, chart_titles
 
 
 def flatten_pages(pages_md):
@@ -193,20 +298,69 @@ def flatten_pages(pages_md):
     return lines
 
 
-def collect_headings(flat_lines):
+def has_text(node):
+    return any((line or "").strip() for line in node["own"])
+
+
+def add_table_captions(markdown, title):
+    """Add a Pandoc table caption to tables that do not have one yet."""
+    if not title:
+        return markdown
+    lines = markdown.splitlines()
+    out = []
+    i = 0
+    fenced = False
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            fenced = not fenced
+            out.append(line)
+            i += 1
+            continue
+        if not fenced and line.lstrip().startswith("|"):
+            start = i
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                i += 1
+            out.extend(lines[start:i])
+            j = i
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and lines[j].lstrip().startswith(":"):
+                continue
+            out.append("")
+            out.append(f": {title}")
+            out.append("")
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+def collect_headings(flat_lines, chart_titles=None):
     """Return content headings as a tree (dicts) with own-text.
 
     A heading is {level, title, page, line, own, children, parent}.
     """
+    chart_titles = set(chart_titles or ())
     raw = []
     for idx, ln in enumerate(flat_lines):
         match = re.match(r"^(#{1,6})\s+(.*\S)\s*$", ln["text"])
         if not match:
             continue
-        title = strip_enum(clean_heading(match.group(2)))
+        raw_title = clean_heading(match.group(2))
+        title = strip_enum(raw_title)
+        key_title = title
+        title = strip_ek_unit(title)
         if not title or norm(title) in TOC_TITLES:
             continue
+        ntitle = norm(title)
+        # A chart caption is not a structural heading; its content belongs to
+        # the preceding real heading.
+        if any(ct and ntitle.startswith(ct) for ct in chart_titles):
+            continue
         raw.append({"level": len(match.group(1)), "title": title,
+                    "raw_title": raw_title, "key_title": key_title,
                     "page": ln["page"], "line": idx})
 
     if not raw:
@@ -219,13 +373,27 @@ def collect_headings(flat_lines):
         raw = raw[1:]
     if not raw:
         return [], None
+
+    # Repair heading levels (the PDFs are not consistent about font sizes).
+    for h in raw:
+        ntitle = norm(h["title"])
+        if re.match(r"^\d+\.", h["raw_title"]) or ntitle in CHAPTER_TITLES:
+            h["level"] = 1
+        elif ntitle in SECTION_TITLES:
+            h["level"] = 2
+        elif ntitle in SUBTITLE_TITLES:
+            h["level"] = 3
+        elif re.match(r"^ek-?\d+", ntitle):
+            h["level"] = 3
+
     chapter_level = min(h["level"] for h in raw)
 
     roots = []
     stack = []
     for h in raw:
         node = {"level": h["level"], "title": h["title"], "page": h["page"],
-                "line": h["line"], "own": [], "children": [], "parent": None}
+                "line": h["line"], "own": [], "children": [], "parent": None,
+                "key_title": h.get("key_title", h["title"])}
         while stack and stack[-1]["level"] >= node["level"]:
             stack.pop()
         if stack:
@@ -241,8 +409,7 @@ def collect_headings(flat_lines):
     for i, node in enumerate(ordered):
         start = node["line"] + 1
         end = ordered[i + 1]["line"] if i + 1 < len(ordered) else len(flat_lines)
-        node["own"] = [ln["text"] for ln in flat_lines[start:end]
-                       if ln["text"].strip()]
+        node["own"] = [ln["text"] for ln in flat_lines[start:end]]
     return roots, chapter_level
 
 
@@ -257,10 +424,63 @@ def heading_key(node):
     chain = []
     cur = node
     while cur is not None:
-        chain.append(cur["title"])
+        chain.append(cur.get("key_title", cur["title"]))
         cur = cur["parent"]
     chain.reverse()
     return "/".join(slug(part) for part in chain)
+
+
+def _qualifier(node):
+    parent = node["parent"]
+    if parent:
+        qualifier = QUALIFIER_BY_PARENT.get(norm(parent["title"]))
+        if qualifier:
+            return qualifier
+    root = node
+    while root["parent"] is not None:
+        root = root["parent"]
+    qualifier = QUALIFIER_BY_CHAPTER.get(norm(root["title"]))
+    if qualifier:
+        return qualifier
+    if parent:
+        return parent["title"][:40]
+    return ""
+
+
+def disambiguate_titles(roots, enabled=True):
+    """Append a parent qualifier to duplicate note titles.
+
+    Keys stay based on the original heading chain, so this only changes the
+    YAML title, hub link text and outline heading.
+    """
+    nodes = []
+    for root in roots:
+        nodes.extend(preorder(root))
+    if not enabled:
+        return
+    counts = {}
+    for node in nodes:
+        if has_text(node):
+            key = norm(node["title"])
+            counts[key] = counts.get(key, 0) + 1
+    used = set()
+    for node in nodes:
+        if not has_text(node):
+            continue
+        title_key = norm(node["title"])
+        if (title_key not in ALWAYS_QUALIFY
+                and counts.get(title_key, 0) <= 1):
+            continue
+        qualifier = _qualifier(node)
+        if not qualifier:
+            continue
+        candidate = f"{node['title']} ({qualifier})"
+        suffix = 2
+        while norm(candidate) in used:
+            candidate = f"{node['title']} ({qualifier} {suffix})"
+            suffix += 1
+        node["title"] = candidate
+        used.add(norm(candidate))
 
 
 def chapter_excluded(node):
@@ -274,82 +494,76 @@ def chapter_excluded(node):
 # YAML headers
 # ---------------------------------------------------------------------------
 
+def _fallback_header(nid, title, country, date, modify, n_type,
+                     bibfile="", extra=(), lof=False, compact_empty=False,
+                     institude=None):
+    """Header renderer for standalone installs without notebox.py."""
+    date = date or dt.datetime.now().strftime("%d/%m/%Y")
+    inst_line = f"institude: {institude}" if institude else "institude:"
+    lines = [
+        "---",
+        f"id: {nid}",
+        f"author: {AUTHOR}",
+        f"title: {yaml_title(title)}",
+        f"date: {date}",
+        f"modify: {modify or ''}",
+        "country:" if (compact_empty and not country) else f"country: {country}",
+        inst_line,
+        f"n_type: {n_type}",
+    ]
+    for key, value in extra:
+        lines.append(f"{key}: {value}")
+    lines.append("keywords:")
+    lines.append("bibliography:" if (compact_empty and not bibfile)
+                 else f"bibliography: {bibfile}")
+    lines.append(f"citation-style: {CITATION_STYLE}")
+    lines += ['toc-title: "İçindekiler"', 'tableTitle: "Tablo"',
+              'lotTitle: "Tablolar"']
+    if lof:
+        lines.append('lofTitle: "Şekiller"')
+    lines += ['reference-section-title: "Kaynakça"', 'figureTitle: "Şekil"',
+              "colorlinks: true", "---"]
+    return "\n".join(lines) + "\n"
+
+
 def build_note_header(nid, title, country, bibfile="", tbup_key="", date=None,
                       modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        f"country: {country}\n"
-        "institude:\n"
-        f"n_type: {N_TYPE_NOTE}\n"
-        f"tbup_key: {tbup_key}\n"
-        "keywords:\n"
-        f"bibliography: {bibfile}\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        'toc-title: "İçindekiler"\n'
-        'tableTitle: "Tablo"\n'
-        'lotTitle: "Tablolar"\n'
-        'reference-section-title: "Kaynakça"\n'
-        'figureTitle: "Şekil"\n'
-        "colorlinks: true\n"
-        "---\n"
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), country, date, modify,
+            n_type=N_TYPE_NOTE, bibfile=bibfile, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude="", extra_fields=(("tbup_key", tbup_key),),
+            lof_title=True,
+        )
+    return _fallback_header(nid, title, country, date, modify, N_TYPE_NOTE,
+                            bibfile=bibfile,
+                            extra=(("tbup_key", tbup_key),), lof=True)
 
 
 def build_country_header(nid, title, country, bibfile="", date=None,
                          modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        f"country: {country}\n"
-        "institude:\n"
-        f"n_type: {N_TYPE_COUNTRY}\n"
-        "keywords:\n"
-        f"bibliography: {bibfile}\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        'toc-title: "İçindekiler"\n'
-        'tableTitle: "Tablo"\n'
-        'lotTitle: "Tablolar"\n'
-        'reference-section-title: "Kaynakça"\n'
-        'figureTitle: "Şekil"\n'
-        "colorlinks: true\n"
-        "---\n"
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), country, date, modify,
+            n_type=N_TYPE_COUNTRY, bibfile=bibfile, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude="", lof_title=True,
+        )
+    return _fallback_header(nid, title, country, date, modify, N_TYPE_COUNTRY,
+                            bibfile=bibfile, lof=True)
 
 
 def build_global_header(nid, title, date=None, modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        "country:\n"
-        "institude:\n"
-        f"n_type: {N_TYPE_GLOBAL}\n"
-        "keywords:\n"
-        "bibliography:\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        'toc-title: "İçindekiler"\n'
-        'tableTitle: "Tablo"\n'
-        'lotTitle: "Tablolar"\n'
-        'reference-section-title: "Kaynakça"\n'
-        'figureTitle: "Şekil"\n'
-        "colorlinks: true\n"
-        "---\n"
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), "", date, modify,
+            n_type=N_TYPE_GLOBAL, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude="", compact_empty=True, lof_title=True,
+        )
+    return _fallback_header(nid, title, "", date, modify, N_TYPE_GLOBAL,
+                            compact_empty=True, institude="", lof=True)
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +768,8 @@ def find_country_tbup_all():
 def parse_args(argv):
     opts = {"headings": False, "download_only": False, "refresh": False,
             "dir": None, "yes": False, "no_prune": False,
-            "check": False, "force": False, "delete": False}
+            "check": False, "force": False, "delete": False,
+            "charts": None, "no_disambiguate": False, "skip_ekler": False}
     positional = []
     i = 0
     while i < len(argv):
@@ -575,6 +790,15 @@ def parse_args(argv):
             opts["force"] = True
         elif arg == "--delete":
             opts["delete"] = True
+        elif arg == "--no-disambiguate":
+            opts["no_disambiguate"] = True
+        elif arg == "--skip-ekler":
+            opts["skip_ekler"] = True
+        elif arg == "--charts":
+            i += 1
+            opts["charts"] = argv[i] if i < len(argv) else None
+        elif arg.startswith("--charts="):
+            opts["charts"] = arg.split("=", 1)[1]
         elif arg == "--dir":
             i += 1
             opts["dir"] = argv[i] if i < len(argv) else None
@@ -601,7 +825,8 @@ def resolve_source(source, iso3_arg, opts):
 
     iso3, display, _ = getTbupPdf.resolve_country(source)
     iso3 = (iso3_arg or iso3)
-    info = getTbupPdf.download_tbup_pdf_info(source, dest_dir=opts["dir"],
+    dest_dir = opts["dir"] or getTbupPdf.default_pdf_dir()
+    info = getTbupPdf.download_tbup_pdf_info(source, dest_dir=dest_dir,
                                              refresh=opts["refresh"])
     if not info:
         return None, (iso3.lower() if iso3 else None), None, None
@@ -689,7 +914,7 @@ def prune_orphans(orphans, opts):
 
 def print_outline(node, depth=1):
     mark = "  " * (depth - 1)
-    tag = " *" if node["own"] else ""
+    tag = " *" if has_text(node) else ""
     print(f"  {mark}{'#' * depth} {node['title']}{tag}")
     for child in node["children"]:
         print_outline(child, depth + 1)
@@ -843,8 +1068,21 @@ def main(argv):
     country_field = iso3.lower()
 
     doc = pymupdf.open(pdf_path)
-    flat_lines = flatten_pages(page_markdown(doc))
-    roots, chapter_level = collect_headings(flat_lines)
+    charts_mode = (opts["charts"]
+                   or os.environ.get("TBUP_CHART_MODE")
+                   or "table+mermaid").strip().lower()
+    if charts_mode not in ("table", "mermaid", "table+mermaid",
+                           "image", "text"):
+        charts_mode = "table+mermaid"
+    skip_ekler = (opts["skip_ekler"]
+                  or os.environ.get("TBUP_SKIP_EKLER", "0") == "1")
+    no_disambiguate = (opts["no_disambiguate"]
+                       or os.environ.get("TBUP_DISAMBIGUATE", "1") == "0")
+    pages_md, chart_titles = page_markdown(
+        doc, iso3, OUT_DIR, charts_mode, dry_run=opts["headings"])
+    flat_lines = flatten_pages(pages_md)
+    roots, chapter_level = collect_headings(flat_lines, chart_titles)
+    disambiguate_titles(roots, enabled=not no_disambiguate)
 
     if not roots:
         print("Belgede başlık bulunamadı (pymupdf4llm başlık üretmedi).")
@@ -853,13 +1091,14 @@ def main(argv):
     print(f"Document : {os.path.basename(pdf_path)}")
     print(f"Country  : {country_name} ({iso3})")
     print(f"Mode     : {'plugin (notebox)' if PLUGIN else 'standalone'}")
+    print(f"Charts   : {charts_mode}")
 
     notes = []
     for root in roots:
-        if chapter_excluded(root):
+        if skip_ekler and chapter_excluded(root):
             continue
         for node in preorder(root):
-            if node["own"]:
+            if has_text(node):
                 notes.append(node)
 
     if not notes:
@@ -921,11 +1160,21 @@ def main(argv):
     orphans = [rec for k, rec in by_key.items() if k not in generated_keys]
     orphans.extend(legacy)
 
+    # EK note links used by the "Detaylı bilgi için ..." source lines.
+    ek_links = {}
+    for p in plan:
+        title = p["node"]["title"]
+        if not is_ek_title(title):
+            continue
+        ek_key = tbupcharts.ek_key_for_title(title)
+        if ek_key and ek_key not in ek_links:
+            ek_links[ek_key] = (title, os.path.basename(p["path"]))
+
     # --- dry run ---------------------------------------------------------
     if opts["headings"]:
         print(f"\nOutline ({len(notes)} note(s)):")
         for root in roots:
-            if chapter_excluded(root):
+            if skip_ekler and chapter_excluded(root):
                 continue
             print_outline(root)
         new_n = sum(1 for p in plan if not p["reused"])
@@ -949,12 +1198,17 @@ def main(argv):
     # --- write section notes --------------------------------------------
     for p in plan:
         node = p["node"]
+        body = "\n".join(node["own"]).strip()
+        body = add_table_captions(body, node["title"])
+        body = strip_ek_units_from_body(body)
+        body = resolve_ek_link_placeholders(body, ek_links)
+        body = tbupcharts.escape_dollars(body)
         content = (
             build_note_header(p["id"], node["title"], country_field,
                               bibfile=bibfile_rel, tbup_key=p["key"],
                               date=p["date"], modify=p["modify"])
             + "\n"
-            + "\n".join(node["own"]).strip()
+            + body
             + f"\n\n@{key}\n"
             + f"\n#BackReferences:\n1- [{hub_title}]({hub_id}.md)\n"
         )
@@ -964,7 +1218,7 @@ def main(argv):
     note_id = {id(p["node"]): p["id"] for p in plan}
     hub_body = []
     for root in roots:
-        if chapter_excluded(root):
+        if skip_ekler and chapter_excluded(root):
             continue
         render_outline(root, note_id, hub_body)
     note_links = "\n".join(

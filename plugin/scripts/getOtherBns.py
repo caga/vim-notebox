@@ -34,12 +34,13 @@ per-country hub, linked into the country OBN page. Output YAML headers use:
 There is no generic note type: every note carries a real institute slug.
 
 Usage:
-    getOtherBns.py <iso3|country> [--dir DIR] [--inst FOLDER] [--headings]
-                   [--yes] [--no-prune] [--check] [--force] [--delete]
-                   [--no-dedup] [--dedup-threshold R]
+    ./getOtherBns.py <iso3|country> [--dir DIR] [--box DIR] [--inst FOLDER]
+                     [--headings] [--yes] [--no-prune] [--check] [--force]
+                     [--delete] [--no-dedup] [--dedup-threshold R]
 
     <iso3|country>  an ISO-3166 alpha-3 code or a country name
-    --dir DIR       search root (default: data/gbns)
+    --box DIR       note box (default: $NOTES_DIR or cwd)
+    --dir DIR       search root (default: <box>/data/gbns)
     --inst FOLDER   only process this institute folder
     --headings      dry run: print the outline and planned notes/writes
     --yes           auto-confirm orphan deletion
@@ -66,7 +67,9 @@ import subprocess
 import tempfile
 import datetime as dt
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _cli
+
+_cli.init()
 
 import pymupdf
 import pymupdf4llm
@@ -625,75 +628,76 @@ def ask_institute(folder_name):
 # YAML headers
 # ---------------------------------------------------------------------------
 
-_HEADER_TAIL = (
-    'toc-title: "İçindekiler"\n'
-    'tableTitle: "Tablo"\n'
-    'lotTitle: "Tablolar"\n'
-    'reference-section-title: "Kaynakça"\n'
-    'figureTitle: "Şekil"\n'
-    "colorlinks: true\n"
-    "---\n"
-)
+def _fallback_header(nid, title, country, date, modify, n_type,
+                     bibfile="", extra=(), lof=False, compact_empty=False,
+                     institude=None):
+    """Header renderer for standalone installs without notebox.py."""
+    date = date or dt.datetime.now().strftime("%d/%m/%Y")
+    inst_line = f"institude: {institude}" if institude else "institude:"
+    lines = [
+        "---",
+        f"id: {nid}",
+        f"author: {AUTHOR}",
+        f"title: {yaml_title(title)}",
+        f"date: {date}",
+        f"modify: {modify or ''}",
+        "country:" if (compact_empty and not country) else f"country: {country}",
+        inst_line,
+        f"n_type: {n_type}",
+    ]
+    for key, value in extra:
+        lines.append(f"{key}: {value}")
+    lines.append("keywords:")
+    lines.append("bibliography:" if (compact_empty and not bibfile)
+                 else f"bibliography: {bibfile}")
+    lines.append(f"citation-style: {CITATION_STYLE}")
+    lines += ['toc-title: "İçindekiler"', 'tableTitle: "Tablo"',
+              'lotTitle: "Tablolar"']
+    if lof:
+        lines.append('lofTitle: "Şekiller"')
+    lines += ['reference-section-title: "Kaynakça"', 'figureTitle: "Şekil"',
+              "colorlinks: true", "---"]
+    return "\n".join(lines) + "\n"
 
 
 def build_note_header(nid, title, country, inst, bibfile="", bn_key="",
                       date=None, modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        f"country: {country}\n"
-        f"institude: {inst}\n"
-        f"n_type: {n_type_note(inst)}\n"
-        f"bn_key: {bn_key}\n"
-        "keywords:\n"
-        f"bibliography: {bibfile}\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        + _HEADER_TAIL
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), country, date, modify,
+            n_type=n_type_note(inst), bibfile=bibfile, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude=inst, extra_fields=(("bn_key", bn_key),),
+        )
+    return _fallback_header(nid, title, country, date, modify,
+                            n_type_note(inst), bibfile=bibfile,
+                            extra=(("bn_key", bn_key),), institude=inst)
 
 
 def build_country_header(nid, title, country, inst, bibfile="", date=None,
                          modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        f"country: {country}\n"
-        f"institude: {inst}\n"
-        f"n_type: {n_type_country(inst)}\n"
-        "keywords:\n"
-        f"bibliography: {bibfile}\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        + _HEADER_TAIL
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), country, date, modify,
+            n_type=n_type_country(inst), bibfile=bibfile, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude=inst,
+        )
+    return _fallback_header(nid, title, country, date, modify,
+                            n_type_country(inst), bibfile=bibfile,
+                            institude=inst)
 
 
 def build_global_header(nid, title, date=None, modify=""):
-    date = date or dt.datetime.now().strftime("%d/%m/%Y")
-    return (
-        "---\n"
-        f"id: {nid}\n"
-        f"author: {AUTHOR}\n"
-        f"title: {yaml_title(title)}\n"
-        f"date: {date}\n"
-        f"modify: {modify or ''}\n"
-        "country:\n"
-        "institude:\n"
-        f"n_type: {N_TYPE_GLOBAL}\n"
-        "keywords:\n"
-        "bibliography:\n"
-        f"citation-style: {CITATION_STYLE}\n"
-        + _HEADER_TAIL
-    )
+    if PLUGIN:
+        return nb.build_header(
+            nid, yaml_title(title), "", date, modify,
+            n_type=N_TYPE_GLOBAL, author=AUTHOR,
+            date_fmt="%d/%m/%Y", citation_style=CITATION_STYLE,
+            institude="", compact_empty=True,
+        )
+    return _fallback_header(nid, title, "", date, modify, N_TYPE_GLOBAL,
+                            compact_empty=True, institude="")
 
 
 # ---------------------------------------------------------------------------

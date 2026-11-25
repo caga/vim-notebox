@@ -1,4 +1,6 @@
 vim9script
+import autoload 'notebox.vim'
+
 # vim-notebox icin getDbn.py entegrasyonu.
 # Aktif not kutusunda (g:notes_directory) bir ulkenin MFA notlarini uretir
 # ve olusan "{Ulke} Dışişleri Bakanlığı Web Notları" indeks notunu acar.
@@ -17,7 +19,7 @@ endif
 def g:DbnFetch(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.Prompt('getDbn.py'))
 	endif
 	if name == ''
 		return
@@ -37,6 +39,7 @@ def g:DbnFetch(country: string)
 		.. ' && ' .. shellescape(g:dbn_python)
 		.. ' ' .. shellescape(g:dbn_script)
 		.. ' ' .. shellescape(name)
+	notebox.Busy('getDbn.py', name)
 	var out = systemlist(cmd)
 	echom join(out, "\n")
 
@@ -56,7 +59,7 @@ enddef
 def g:DbnDelete(country: string)
 	var name = country
 	if name == ''
-		name = input('Ülke (iso3/ad): ')
+		name = input(notebox.DeletePrompt('getDbn.py'))
 	endif
 	if name == ''
 		return
